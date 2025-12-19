@@ -76,12 +76,13 @@ type GameState = {
   visits: Record<string, number[]>;
   revealed: Record<string, boolean>;
 
+  // NEW: 犯人のルート（訪れた順）
+  criminalPath: Cell[];
+
   // UX: 犯人移動中
   criminalMoving: boolean;
   moveWaitSec: 5 | 10 | 15;
-  moveEndsAt: number; // epoch ms（秒数表示はしないが、内部で使用）
-
-  log: string[]; // 表示はしない（デバッグ用に残す）
+  moveEndsAt: number; // epoch ms（表示はしない）
 };
 
 function randomCell(): Cell {
@@ -93,9 +94,9 @@ function pickRandom<T>(arr: T[]): T {
 
 function getHeliColor(index: number) {
   // 0: green, 1: red, 2: yellow
-  if (index === 0) return "#22c55e"; // green
-  if (index === 1) return "#ef4444"; // red
-  return "#facc15"; // yellow
+  if (index === 0) return "#22c55e";
+  if (index === 1) return "#ef4444";
+  return "#facc15";
 }
 
 /**
@@ -109,6 +110,13 @@ function criminalNextMove(current: Cell, visits: Record<string, number[]>) {
   const candidates = neighborsCell(current).filter((n) => !visited.has(keyCell(n)));
   if (candidates.length === 0) return { next: current, moved: false, stuck: true as const };
   return { next: pickRandom(candidates), moved: true, stuck: false as const };
+}
+
+// 盤面内の「ビル中心座標」を 0..100% で返す
+function cellCenterPct(c: Cell) {
+  const x = ((c.c + 0.5) / GRID) * 100;
+  const y = ((c.r + 0.5) / GRID) * 100;
+  return { x, y };
 }
 
 export default function App() {
@@ -125,10 +133,10 @@ export default function App() {
     criminalPos: randomCell(),
     visits: {},
     revealed: {},
+    criminalPath: [],
     criminalMoving: false,
     moveWaitSec: 5,
     moveEndsAt: 0,
-    log: ["ヘリを3機配置してください（交差点をタップ）"],
   }));
 
   const allNodes = useMemo(() => {
@@ -168,10 +176,10 @@ export default function App() {
       criminalPos: randomCell(),
       visits: {},
       revealed: {},
+      criminalPath: [],
       criminalMoving: false,
       moveWaitSec: 5,
       moveEndsAt: 0,
-      log: ["ヘリを3機配置してください（交差点をタップ）"],
     });
   }
 
@@ -186,28 +194,21 @@ export default function App() {
     if (idx >= 0) {
       const next = state.helicopters.slice();
       next.splice(idx, 1);
-      setState((s) => ({
-        ...s,
-        helicopters: next,
-        log: [`ヘリを外しました（残り ${3 - next.length}）`, ...s.log],
-      }));
+      setState((s) => ({ ...s, helicopters: next }));
       return;
     }
 
     if (state.helicopters.length >= 3) return;
 
     const next = [...state.helicopters, n];
-    setState((s) => ({
-      ...s,
-      helicopters: next,
-      log: [`ヘリを配置しました（残り ${3 - next.length}）`, ...s.log],
-    }));
+    setState((s) => ({ ...s, helicopters: next }));
   }
 
   function startGame() {
     if (state.phase !== "SETUP") return;
     if (state.helicopters.length !== 3) return;
 
+    // 犯人初期位置（MVP：ランダム）
     const c0 = randomCell();
     const visits = { ...state.visits };
     visits[keyCell(c0)] = Array.from(new Set([...(visits[keyCell(c0)] ?? []), 1]));
@@ -222,7 +223,7 @@ export default function App() {
       mode: "IDLE",
       criminalPos: c0,
       visits,
-      log: ["犯人が隠れた…（警察ターン開始：行動3）", ...s.log],
+      criminalPath: [c0], // NEW
     }));
   }
 
@@ -268,10 +269,6 @@ export default function App() {
       heliActed,
       actionsLeft: s.actionsLeft - 1,
       mode: "IDLE",
-      log: [
-        `T${s.turn}：🚁 移動（残り行動 ${s.actionsLeft - 1}）`,
-        ...s.log,
-      ],
     }));
   }
 
@@ -302,23 +299,24 @@ export default function App() {
     const isCandidate = candidates.some((c) => c.r === target.r && c.c === target.c);
     if (!isCandidate) return;
 
+    // 逮捕（終了）
     const arrested = target.r === state.criminalPos.r && target.c === state.criminalPos.c;
     if (arrested) {
       setState((s) => ({
         ...s,
         phase: "END",
         mode: "IDLE",
-        log: ["捜索 → 逮捕！警察の勝ち", ...s.log],
       }));
       return;
     }
 
+    // 痕跡開示（色だけ）
     const k = keyCell(target);
     const revealed = { ...state.revealed };
     const v = state.visits[k];
-
-    const foundTrace = !!(v && v.length > 0 && !revealed[k]);
-    if (foundTrace) revealed[k] = true;
+    if (v && v.length > 0 && !revealed[k]) {
+      revealed[k] = true;
+    }
 
     const heliActed = state.heliActed.slice();
     heliActed[state.selectedHeli] = true;
@@ -329,7 +327,6 @@ export default function App() {
       heliActed,
       actionsLeft: s.actionsLeft - 1,
       mode: "IDLE",
-      log: [`捜索（${foundTrace ? "痕跡あり" : "痕跡なし"}・残り行動 ${s.actionsLeft - 1}）`, ...s.log],
     }));
   }
 
@@ -345,24 +342,25 @@ export default function App() {
       moveWaitSec: wait,
       moveEndsAt: endsAt,
       mode: "IDLE",
-      log: [`T${nextTurn}：犯人が移動中…（待ち ${wait}s）`, ...s.log],
     }));
 
     moveTimerRef.current = window.setTimeout(() => {
       clearTimers();
       setState((prev) => {
+        // 途中でリセット等されたら無視
         if (prev.phase !== "POLICE" || prev.turn !== nextTurn - 1) {
           return { ...prev, criminalMoving: false };
         }
 
+        // 隣接・再訪不可の移動
         const mv = criminalNextMove(prev.criminalPos, prev.visits);
 
+        // 行き止まり → 警察勝利扱い（ゲーム終了）
         if (mv.stuck) {
           return {
             ...prev,
             phase: "END",
             criminalMoving: false,
-            log: [`T${nextTurn}：犯人は行き止まりで動けない → 警察の勝ち`, ...prev.log],
           };
         }
 
@@ -375,11 +373,11 @@ export default function App() {
           turn: nextTurn,
           criminalPos: mv.next,
           visits,
+          criminalPath: [...prev.criminalPath, mv.next], // NEW: ルート追記
           actionsLeft: ACTIONS_PER_TURN,
           heliActed: [false, false, false],
           mode: "IDLE",
           criminalMoving: false,
-          log: [`T${nextTurn}：犯人が移動した`, ...prev.log],
         };
       });
     }, wait * 1000);
@@ -389,13 +387,9 @@ export default function App() {
     if (state.phase !== "POLICE") return;
     if (state.criminalMoving) return;
 
+    // 11ターン逃げ切りで終了（犯人勝ち）
     if (state.turn >= MAX_TURN) {
-      setState((s) => ({
-        ...s,
-        phase: "END",
-        mode: "IDLE",
-        log: ["11ターン逃げ切り：犯人の勝ち", ...s.log],
-      }));
+      setState((s) => ({ ...s, phase: "END", mode: "IDLE" }));
       return;
     }
 
@@ -420,7 +414,7 @@ export default function App() {
     const turns = state.visits[k] ?? [];
     const first = turns.length ? Math.min(...turns) : null;
 
-    const baseBlue = "#1d4ed8"; // blue-700
+    const baseBlue = "#1d4ed8";
 
     const base: React.CSSProperties = {
       border: "1px solid rgba(255,255,255,0.18)",
@@ -431,7 +425,7 @@ export default function App() {
       background: baseBlue,
     };
 
-    // 捜索選択中：候補4つだけ明るく＆枠
+    // 捜索選択中：候補4つだけ明るく
     if (state.phase === "POLICE" && state.mode === "SEARCH_SELECT" && state.selectedHeli != null) {
       const node = state.helicopters[state.selectedHeli];
       const cand = surroundingCells(node);
@@ -452,7 +446,7 @@ export default function App() {
       base.outline = "2px solid rgba(0,0,0,0.12)";
     }
 
-    // 終了時だけ犯人位置を公開（赤い車）
+    // 終了時：犯人の最終位置を赤車で強調
     if (state.phase === "END" && state.criminalPos.r === c.r && state.criminalPos.c === c.c) {
       base.background = "#991b1b";
       base.outline = "3px solid rgba(255,255,255,0.9)";
@@ -462,6 +456,18 @@ export default function App() {
   }
 
   const canStart = state.phase === "SETUP" && state.helicopters.length === 3;
+
+  // END時だけ「ルート線」を表示
+  const routePoints = useMemo(() => {
+    if (state.phase !== "END") return [];
+    if (!state.criminalPath || state.criminalPath.length < 2) return [];
+    return state.criminalPath.map(cellCenterPct);
+  }, [state.phase, state.criminalPath]);
+
+  const polylinePoints = useMemo(() => {
+    if (routePoints.length === 0) return "";
+    return routePoints.map((p) => `${p.x},${p.y}`).join(" ");
+  }, [routePoints]);
 
   return (
     <div style={{ padding: 12, maxWidth: 560, margin: "0 auto", fontFamily: "system-ui, sans-serif" }}>
@@ -541,6 +547,65 @@ export default function App() {
               })}
             </div>
 
+            {/* END時：犯人ルートのオーバーレイ */}
+            {state.phase === "END" && routePoints.length > 0 && (
+              <svg
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  borderRadius: 16,
+                  pointerEvents: "none",
+                }}
+              >
+                {/* ルート線 */}
+                <polyline
+                  points={polylinePoints}
+                  fill="none"
+                  stroke="rgba(255,255,255,0.90)"
+                  strokeWidth="1.8"
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+                {/* ルートの点 */}
+                {routePoints.map((p, i) => (
+                  <circle
+                    key={i}
+                    cx={p.x}
+                    cy={p.y}
+                    r={i === 0 || i === routePoints.length - 1 ? 2.2 : 1.6}
+                    fill={i === 0 ? "rgba(34,197,94,0.95)" : i === routePoints.length - 1 ? "rgba(239,68,68,0.95)" : "rgba(255,255,255,0.85)"}
+                    stroke="rgba(0,0,0,0.25)"
+                    strokeWidth="0.4"
+                  />
+                ))}
+                {/* Start/End ラベル */}
+                {routePoints.length >= 1 && (
+                  <>
+                    <text
+                      x={routePoints[0].x + 1.6}
+                      y={routePoints[0].y - 1.6}
+                      fontSize="3.6"
+                      fill="rgba(34,197,94,0.95)"
+                      fontWeight="700"
+                    >
+                      S
+                    </text>
+                    <text
+                      x={routePoints[routePoints.length - 1].x + 1.6}
+                      y={routePoints[routePoints.length - 1].y - 1.6}
+                      fontSize="3.6"
+                      fill="rgba(239,68,68,0.95)"
+                      fontWeight="700"
+                    >
+                      E
+                    </text>
+                  </>
+                )}
+              </svg>
+            )}
+
             {/* Nodes / Helicopters overlay */}
             {allNodes.map((n) => {
               const k = keyNode(n);
@@ -613,7 +678,6 @@ export default function App() {
                       : "移動先（隣接のみ）"
                   }
                 >
-                  {/* ヘリの「1/2/3」表示はなくす */}
                   {placed ? "🚁" : "·"}
                 </button>
               );
@@ -660,7 +724,6 @@ export default function App() {
                     ...s,
                     helicopters: [],
                     selectedHeli: null,
-                    log: ["ヘリを3機配置してください（交差点をタップ）", ...s.log],
                   }))
                 }
                 style={{ flex: 1, height: 44 }}
@@ -698,12 +761,16 @@ export default function App() {
               </button>
             </div>
           )}
+
+          {state.phase === "END" && (
+            <div style={{ marginTop: 12, textAlign: "center", color: "#444", fontSize: 13 }}>
+              終了：犯人ルート（白線） / 開始=S（緑） / 終了=E（赤）
+            </div>
+          )}
         </section>
       </main>
 
-      <footer style={{ marginTop: 12, fontSize: 12, color: "#666" }}>
-        ※犯人（🚗）はゲーム終了時にのみ表示します。
-      </footer>
+      <footer style={{ marginTop: 12, fontSize: 12, color: "#666" }}>※犯人ルートはゲーム終了時のみ表示します。</footer>
     </div>
   );
 }
