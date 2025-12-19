@@ -79,10 +79,9 @@ type GameState = {
   // UX: 犯人移動中
   criminalMoving: boolean;
   moveWaitSec: 5 | 10 | 15;
-  moveEndsAt: number; // epoch ms
-  moveCountdownSec: number;
+  moveEndsAt: number; // epoch ms（秒数表示はしないが、内部で使用）
 
-  log: string[];
+  log: string[]; // 表示はしない（デバッグ用に残す）
 };
 
 function randomCell(): Cell {
@@ -114,7 +113,6 @@ function criminalNextMove(current: Cell, visits: Record<string, number[]>) {
 
 export default function App() {
   const moveTimerRef = useRef<number | null>(null);
-  const countdownTimerRef = useRef<number | null>(null);
 
   const [state, setState] = useState<GameState>(() => ({
     turn: 1,
@@ -130,7 +128,6 @@ export default function App() {
     criminalMoving: false,
     moveWaitSec: 5,
     moveEndsAt: 0,
-    moveCountdownSec: 0,
     log: ["ヘリを3機配置してください（交差点をタップ）"],
   }));
 
@@ -150,10 +147,6 @@ export default function App() {
     if (moveTimerRef.current != null) {
       window.clearTimeout(moveTimerRef.current);
       moveTimerRef.current = null;
-    }
-    if (countdownTimerRef.current != null) {
-      window.clearInterval(countdownTimerRef.current);
-      countdownTimerRef.current = null;
     }
   }
 
@@ -178,7 +171,6 @@ export default function App() {
       criminalMoving: false,
       moveWaitSec: 5,
       moveEndsAt: 0,
-      moveCountdownSec: 0,
       log: ["ヘリを3機配置してください（交差点をタップ）"],
     });
   }
@@ -277,7 +269,7 @@ export default function App() {
       actionsLeft: s.actionsLeft - 1,
       mode: "IDLE",
       log: [
-        `T${s.turn}：🚁${(s.selectedHeli ?? 0) + 1} 移動（残り行動 ${s.actionsLeft - 1}）`,
+        `T${s.turn}：🚁 移動（残り行動 ${s.actionsLeft - 1}）`,
         ...s.log,
       ],
     }));
@@ -316,7 +308,7 @@ export default function App() {
         ...s,
         phase: "END",
         mode: "IDLE",
-        log: [`T${s.turn}：捜索 → 逮捕！警察の勝ち`, ...s.log],
+        log: ["捜索 → 逮捕！警察の勝ち", ...s.log],
       }));
       return;
     }
@@ -337,12 +329,7 @@ export default function App() {
       heliActed,
       actionsLeft: s.actionsLeft - 1,
       mode: "IDLE",
-      log: [
-        `T${s.turn}：🚁${(s.selectedHeli ?? 0) + 1} 捜索（${foundTrace ? "痕跡あり" : "痕跡なし"}・残り行動 ${
-          s.actionsLeft - 1
-        }）`,
-        ...s.log,
-      ],
+      log: [`捜索（${foundTrace ? "痕跡あり" : "痕跡なし"}・残り行動 ${s.actionsLeft - 1}）`, ...s.log],
     }));
   }
 
@@ -352,37 +339,22 @@ export default function App() {
     const wait: 5 | 10 | 15 = pickRandom([5, 10, 15] as const);
     const endsAt = Date.now() + wait * 1000;
 
-    // まず「移動中」へ
     setState((s) => ({
       ...s,
       criminalMoving: true,
       moveWaitSec: wait,
       moveEndsAt: endsAt,
-      moveCountdownSec: wait,
       mode: "IDLE",
       log: [`T${nextTurn}：犯人が移動中…（待ち ${wait}s）`, ...s.log],
     }));
 
-    // カウントダウン表示
-    countdownTimerRef.current = window.setInterval(() => {
-      setState((prev) => {
-        if (!prev.criminalMoving) return prev;
-        const remain = Math.max(0, Math.ceil((prev.moveEndsAt - Date.now()) / 1000));
-        if (remain === prev.moveCountdownSec) return prev;
-        return { ...prev, moveCountdownSec: remain };
-      });
-    }, 200);
-
-    // 実際の移動（待機後）
     moveTimerRef.current = window.setTimeout(() => {
       clearTimers();
       setState((prev) => {
-        // 途中でリセット等されたら無視
         if (prev.phase !== "POLICE" || prev.turn !== nextTurn - 1) {
-          return { ...prev, criminalMoving: false, moveCountdownSec: 0 };
+          return { ...prev, criminalMoving: false };
         }
 
-        // 犯人移動（隣接・再訪不可）
         const mv = criminalNextMove(prev.criminalPos, prev.visits);
 
         if (mv.stuck) {
@@ -390,7 +362,6 @@ export default function App() {
             ...prev,
             phase: "END",
             criminalMoving: false,
-            moveCountdownSec: 0,
             log: [`T${nextTurn}：犯人は行き止まりで動けない → 警察の勝ち`, ...prev.log],
           };
         }
@@ -408,8 +379,7 @@ export default function App() {
           heliActed: [false, false, false],
           mode: "IDLE",
           criminalMoving: false,
-          moveCountdownSec: 0,
-          log: [`T${nextTurn}：犯人が移動した`, `T${nextTurn}：警察ターン開始（行動3）`, ...prev.log],
+          log: [`T${nextTurn}：犯人が移動した`, ...prev.log],
         };
       });
     }, wait * 1000);
@@ -433,7 +403,7 @@ export default function App() {
     scheduleCriminalMove(nextTurn);
   }
 
-  // 行動が0になったら自動でターン終了（→犯人移動の待機へ）
+  // 行動が0になったら自動でターン終了
   useEffect(() => {
     if (state.phase !== "POLICE") return;
     if (state.actionsLeft !== 0) return;
@@ -453,7 +423,7 @@ export default function App() {
     const baseBlue = "#1d4ed8"; // blue-700
 
     const base: React.CSSProperties = {
-      border: "1px solid rgba(255,255,255,0.20)",
+      border: "1px solid rgba(255,255,255,0.18)",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
@@ -468,7 +438,7 @@ export default function App() {
       const isCand = cand.some((x) => x.r === c.r && x.c === c.c);
       if (isCand) {
         base.outline = "3px solid rgba(255,255,255,0.9)";
-        base.background = "#2563eb"; // blue-600
+        base.background = "#2563eb";
         base.cursor = "pointer";
       } else {
         base.opacity = 0.55;
@@ -479,13 +449,12 @@ export default function App() {
     if (isRevealed && first != null) {
       base.background = traceColor(first);
       base.opacity = 1;
-      base.outline = "2px solid rgba(0,0,0,0.15)";
+      base.outline = "2px solid rgba(0,0,0,0.12)";
     }
 
     // 終了時だけ犯人位置を公開（赤い車）
-    const revealCriminal = state.phase === "END";
-    if (revealCriminal && state.criminalPos.r === c.r && state.criminalPos.c === c.c) {
-      base.background = "#991b1b"; // red-800
+    if (state.phase === "END" && state.criminalPos.r === c.r && state.criminalPos.c === c.c) {
+      base.background = "#991b1b";
       base.outline = "3px solid rgba(255,255,255,0.9)";
     }
 
@@ -566,7 +535,6 @@ export default function App() {
 
                 return (
                   <div key={k} style={cellStyle(c)} onClick={onClick}>
-                    {/* 犯人は終了時だけ表示 */}
                     {showCriminal ? <span style={{ fontSize: 22 }}>🚗</span> : null}
                   </div>
                 );
@@ -628,7 +596,7 @@ export default function App() {
                       : "2px solid rgba(17,24,39,0.45)",
                     background: heliColor,
                     boxShadow: "0 6px 16px rgba(0,0,0,0.22)",
-                    fontSize: 16,
+                    fontSize: 18,
                     fontWeight: 900,
                     outline: isSelected ? "3px solid rgba(14,165,233,0.55)" : "none",
                     cursor: state.criminalMoving ? "not-allowed" : "pointer",
@@ -645,12 +613,13 @@ export default function App() {
                       : "移動先（隣接のみ）"
                   }
                 >
-                  {placed ? `🚁${placedIndex + 1}${acted ? "✓" : ""}` : "·"}
+                  {/* ヘリの「1/2/3」表示はなくす */}
+                  {placed ? "🚁" : "·"}
                 </button>
               );
             })}
 
-            {/* Criminal moving overlay */}
+            {/* Criminal moving overlay（秒数表示なし） */}
             {state.criminalMoving && (
               <div
                 style={{
@@ -676,9 +645,6 @@ export default function App() {
                   }}
                 >
                   <div style={{ fontSize: 18, fontWeight: 900 }}>犯人が移動中…</div>
-                  <div style={{ fontSize: 14, opacity: 0.9, marginTop: 6 }}>
-                    待ち時間：{state.moveWaitSec}s（残り {state.moveCountdownSec}s）
-                  </div>
                   <div style={{ fontSize: 26, marginTop: 10 }}>🚗💨</div>
                 </div>
               </div>
@@ -732,27 +698,6 @@ export default function App() {
               </button>
             </div>
           )}
-        </section>
-
-        {/* Log */}
-        <section>
-          <div style={{ fontWeight: 900, marginBottom: 6 }}>ログ</div>
-          <div
-            style={{
-              border: "1px solid #e5e7eb",
-              borderRadius: 12,
-              padding: 10,
-              maxHeight: 240,
-              overflow: "auto",
-              background: "#fff",
-            }}
-          >
-            {state.log.slice(0, 50).map((l, i) => (
-              <div key={i} style={{ fontSize: 12, padding: "6px 0", borderBottom: "1px dashed #eee" }}>
-                {l}
-              </div>
-            ))}
-          </div>
         </section>
       </main>
 
