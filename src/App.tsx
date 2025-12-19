@@ -675,7 +675,7 @@ export default function App() {
           const candidates = [0, 1, 2].filter((idx) => !prev.heliActed[idx]);
           if (candidates.length === 0) return prev;
 
-          const heliIndex = pickRandom(candidates as const);
+          const heliIndex = pickRandom(candidates) as 0 | 1 | 2;
           const heliNode = prev.helicopters[heliIndex];
 
           const hasAnyTrace = Object.values(prev.revealed).some(Boolean);
