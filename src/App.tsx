@@ -60,7 +60,6 @@ function surroundingCells(node: Node): Cell[] {
   ];
 }
 
-// 痕跡色（意味：犯人がそのビルにいたターン）
 function traceColor(visitTurn: number) {
   if (visitTurn === 1) return "gold";
   if (visitTurn === 6) return "orange";
@@ -75,9 +74,9 @@ function randomCell(): Cell {
 }
 
 function getHeliColor(index: number) {
-  if (index === 0) return "#22c55e"; // green
-  if (index === 1) return "#ef4444"; // red
-  return "#facc15"; // yellow
+  if (index === 0) return "#22c55e";
+  if (index === 1) return "#ef4444";
+  return "#facc15";
 }
 
 function cellCenterPct(c: Cell) {
@@ -105,9 +104,6 @@ function uniqueRandomNodes(count: number): Node[] {
   return picked;
 }
 
-/**
- * 犯人AI（詰み回避・待機なし）
- */
 function criminalAiNextMoveNoStuck(current: Cell, visits: Record<string, number[]>, currentTurn: number) {
   const visited = new Set(Object.keys(visits));
   const remainingMoves = MAX_TURN - currentTurn;
@@ -238,11 +234,6 @@ function bestSearchTarget(node: Node, heat: number[][], searched: Record<string,
   return scored[0].c;
 }
 
-/**
- * ★ヘリが重ならないように移動先を選ぶ
- * - 通常の「ターゲットに近づく」だけだと、他ヘリと同じ場所に入ってしまうことがある
- * - ここでは occupied を避ける
- */
 function bestMoveNodeTowardAvoidOccupied(node: Node, target: Cell, occupied: Set<string>): Node {
   const neigh = neighborsNode(node).filter((n) => !occupied.has(keyNode(n)));
   if (neigh.length === 0) return node;
@@ -469,7 +460,6 @@ export default function App() {
     if (state.selectedHeli == null) return;
     if (!currentHeliCanAct()) return;
 
-    // ★プレイヤー操作でも「他ヘリがいる場所」へは移動不可
     const occupied = new Set(state.helicopters.map(keyNode));
     occupied.delete(keyNode(state.helicopters[state.selectedHeli]));
     if (occupied.has(keyNode(to))) return;
@@ -673,16 +663,13 @@ export default function App() {
           if (doMove) {
             const target = bestCellByHeat(heat);
 
-            // ★occupied: 自分以外のヘリ位置は占有扱い（重なり禁止）
             const occupied = new Set(prev.helicopters.map(keyNode));
             occupied.delete(keyNode(heliNode));
-
             const to = bestMoveNodeTowardAvoidOccupied(heliNode, target, occupied);
 
             const helicopters = prev.helicopters.slice();
             helicopters[heliIndex] = to;
 
-            // 念のため：もし何かで重なったらランダムで空きを探す
             const uniq = new Set(helicopters.map(keyNode));
             if (uniq.size < 3) {
               const used = new Set(helicopters.map(keyNode));
@@ -838,7 +825,6 @@ export default function App() {
 
     const baseBlue = "#1d4ed8";
     const base: React.CSSProperties = {
-      // ★道を強調：線を太く（4px）＋白寄り、セル背景は少し濃い青
       border: "4px solid rgba(255,255,255,0.50)",
       display: "flex",
       alignItems: "center",
@@ -1010,7 +996,7 @@ export default function App() {
                 position: "absolute",
                 inset: 0,
                 borderRadius: 16,
-                background: "#cbd5e1", // ★道色（薄いグレー）で“道っぽさ”を強調
+                background: "#cbd5e1",
               }}
             />
 
@@ -1035,14 +1021,6 @@ export default function App() {
                 const tappable = canTapCell(c);
 
                 const isTrace = !!state.revealed[k];
-                const showTraceBang = isTrace;
-
-                const showNoEntry =
-                  state.role === "CRIMINAL" &&
-                  state.phase === "CRIMINAL_MOVE" &&
-                  visitedSet.has(k) &&
-                  !(state.criminalPos && state.criminalPos.r === c.r && state.criminalPos.c === c.c);
-
                 const showCar =
                   state.criminalPos &&
                   ((state.role === "CRIMINAL" &&
@@ -1055,31 +1033,25 @@ export default function App() {
                   <div key={k} style={style} onClick={() => (tappable ? onCellTap(c) : undefined)}>
                     {showCar ? <span style={{ fontSize: 22 }}>🚗</span> : null}
 
-                    {showTraceBang ? (
+                    {/* ★痕跡：中央に大きめの「！」 */}
+                    {isTrace ? (
                       <span
                         style={{
                           position: "absolute",
-                          top: 6,
-                          left: 6,
-                          width: 18,
-                          height: 18,
-                          borderRadius: 999,
-                          display: "inline-flex",
+                          inset: 0,
+                          display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          background: "rgba(0,0,0,0.35)",
-                          color: "#fff",
-                          fontWeight: 900,
-                          fontSize: 12,
+                          fontSize: 34,
+                          fontWeight: 1000 as any,
+                          color: "rgba(255,255,255,0.95)",
+                          textShadow: "0 3px 10px rgba(0,0,0,0.55)",
+                          pointerEvents: "none",
                         }}
                         aria-label="trace"
                       >
                         !
                       </span>
-                    ) : null}
-
-                    {showNoEntry ? (
-                      <span style={{ position: "absolute", bottom: 6, right: 6, fontSize: 14, opacity: 0.95 }}>🚫</span>
                     ) : null}
                   </div>
                 );
@@ -1257,3 +1229,4 @@ export default function App() {
     </div>
   );
 }
+
