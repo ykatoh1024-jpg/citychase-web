@@ -12,7 +12,7 @@ type Phase =
   | "END";
 
 type Cell = { r: number; c: number }; // 0..4
-type Node = { r: number; c: number }; // 0..3 (16 intersections)
+type Node = { r: number; c: number }; // 0..3
 
 const GRID = 5;
 const NODE = 4;
@@ -75,9 +75,9 @@ function randomCell(): Cell {
 }
 
 function getHeliColor(index: number) {
-  if (index === 0) return "#22c55e";
-  if (index === 1) return "#ef4444";
-  return "#facc15";
+  if (index === 0) return "#22c55e"; // green
+  if (index === 1) return "#ef4444"; // red
+  return "#facc15"; // yellow
 }
 
 function cellCenterPct(c: Cell) {
@@ -107,8 +107,6 @@ function uniqueRandomNodes(count: number): Node[] {
 
 /**
  * 犯人AI（詰み回避・待機なし）
- * - 毎ターン「残りターン分だけ self-avoiding（再訪なし）で歩ける」手を先読みで保証して選ぶ
- * - 5x5で最大11ターンなら計算量は十分軽い
  */
 function criminalAiNextMoveNoStuck(current: Cell, visits: Record<string, number[]>, currentTurn: number) {
   const visited = new Set(Object.keys(visits));
@@ -125,7 +123,6 @@ function criminalAiNextMoveNoStuck(current: Cell, visits: Record<string, number[
     const neigh = neighborsCell(pos).filter((n) => !visitedSet.has(keyCell(n)));
     if (neigh.length === 0) return false;
 
-    // 詰みにくい順（逃げ道が少ない所から試す）
     neigh.sort((a, b) => {
       const da = neighborsCell(a).filter((x) => !visitedSet.has(keyCell(x))).length;
       const db = neighborsCell(b).filter((x) => !visitedSet.has(keyCell(x))).length;
@@ -241,8 +238,13 @@ function bestSearchTarget(node: Node, heat: number[][], searched: Record<string,
   return scored[0].c;
 }
 
-function bestMoveNodeToward(node: Node, target: Cell): Node {
-  const neigh = neighborsNode(node);
+/**
+ * ★ヘリが重ならないように移動先を選ぶ
+ * - 通常の「ターゲットに近づく」だけだと、他ヘリと同じ場所に入ってしまうことがある
+ * - ここでは occupied を避ける
+ */
+function bestMoveNodeTowardAvoidOccupied(node: Node, target: Cell, occupied: Set<string>): Node {
+  const neigh = neighborsNode(node).filter((n) => !occupied.has(keyNode(n)));
   if (neigh.length === 0) return node;
 
   let best = neigh[0];
@@ -467,6 +469,11 @@ export default function App() {
     if (state.selectedHeli == null) return;
     if (!currentHeliCanAct()) return;
 
+    // ★プレイヤー操作でも「他ヘリがいる場所」へは移動不可
+    const occupied = new Set(state.helicopters.map(keyNode));
+    occupied.delete(keyNode(state.helicopters[state.selectedHeli]));
+    if (occupied.has(keyNode(to))) return;
+
     const from = state.helicopters[state.selectedHeli];
     const ok = neighborsNode(from).some((n) => keyNode(n) === keyNode(to));
     if (!ok) return;
@@ -552,7 +559,6 @@ export default function App() {
 
         const mv = criminalAiNextMoveNoStuck(prev.criminalPos, prev.visits, prev.turn);
 
-        // 最終保険（通常ここには来ない想定）
         if (mv.stuck) {
           return { ...prev, phase: "END", winner: "CRIMINAL", criminalMoving: false };
         }
@@ -666,10 +672,29 @@ export default function App() {
 
           if (doMove) {
             const target = bestCellByHeat(heat);
-            const to = bestMoveNodeToward(heliNode, target);
+
+            // ★occupied: 自分以外のヘリ位置は占有扱い（重なり禁止）
+            const occupied = new Set(prev.helicopters.map(keyNode));
+            occupied.delete(keyNode(heliNode));
+
+            const to = bestMoveNodeTowardAvoidOccupied(heliNode, target, occupied);
 
             const helicopters = prev.helicopters.slice();
             helicopters[heliIndex] = to;
+
+            // 念のため：もし何かで重なったらランダムで空きを探す
+            const uniq = new Set(helicopters.map(keyNode));
+            if (uniq.size < 3) {
+              const used = new Set(helicopters.map(keyNode));
+              const all: Node[] = [];
+              for (let r = 0; r < NODE; r++) for (let c = 0; c < NODE; c++) all.push({ r, c });
+              for (let j = 0; j < 3; j++) {
+                if (j === heliIndex) continue;
+                used.add(keyNode(helicopters[j]));
+              }
+              const alt = all.filter((n) => !used.has(keyNode(n)));
+              if (alt.length > 0) helicopters[heliIndex] = pickRandom(alt);
+            }
 
             const heliActed = prev.heliActed.slice();
             heliActed[heliIndex] = true;
@@ -813,7 +838,8 @@ export default function App() {
 
     const baseBlue = "#1d4ed8";
     const base: React.CSSProperties = {
-      border: "2px solid rgba(255,255,255,0.40)", // ★道（境界）を太く
+      // ★道を強調：線を太く（4px）＋白寄り、セル背景は少し濃い青
+      border: "4px solid rgba(255,255,255,0.50)",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
@@ -880,13 +906,7 @@ export default function App() {
 
   const winnerText =
     state.winner === "POLICE" ? "🚓 警察の勝ち！" : state.winner === "CRIMINAL" ? "🚗 犯人の勝ち！" : "";
-
-  const winnerSub =
-    state.winner === "POLICE"
-      ? "犯人を見つけました"
-      : state.winner === "CRIMINAL"
-      ? "逃げ切りました"
-      : "";
+  const winnerSub = state.winner === "POLICE" ? "犯人を見つけました" : state.winner === "CRIMINAL" ? "逃げ切りました" : "";
 
   return (
     <div style={{ padding: 12, maxWidth: 560, margin: "0 auto", fontFamily: "system-ui, sans-serif" }}>
@@ -899,7 +919,6 @@ export default function App() {
           boxShadow: "0 2px 10px rgba(0,0,0,0.06)",
         }}
       >
-        {/* Winner banner */}
         {state.phase === "END" && state.winner && (
           <div
             style={{
@@ -985,6 +1004,16 @@ export default function App() {
 
         <section>
           <div style={{ position: "relative", width: "100%", maxWidth: 480, margin: "0 auto", aspectRatio: "1 / 1" }}>
+            {/* Roads background */}
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                borderRadius: 16,
+                background: "#cbd5e1", // ★道色（薄いグレー）で“道っぽさ”を強調
+              }}
+            />
+
             {/* Buildings */}
             <div
               style={{
@@ -997,7 +1026,7 @@ export default function App() {
                 border: "2px solid #0f172a",
                 borderRadius: 16,
                 overflow: "hidden",
-                background: "#0b1020",
+                background: "transparent",
               }}
             >
               {allCells.map((c) => {
@@ -1005,7 +1034,7 @@ export default function App() {
                 const style = cellStyle(c);
                 const tappable = canTapCell(c);
 
-                const isTrace = !!state.revealed[k]; // 痕跡が開示されているセル
+                const isTrace = !!state.revealed[k];
                 const showTraceBang = isTrace;
 
                 const showNoEntry =
@@ -1026,7 +1055,6 @@ export default function App() {
                   <div key={k} style={style} onClick={() => (tappable ? onCellTap(c) : undefined)}>
                     {showCar ? <span style={{ fontSize: 22 }}>🚗</span> : null}
 
-                    {/* 痕跡マーク：色＋「！」 */}
                     {showTraceBang ? (
                       <span
                         style={{
