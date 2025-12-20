@@ -330,6 +330,25 @@ export default function App() {
     return a;
   }, []);
 
+  // ★ボタンのベーススタイル（常に同じ → 押しても画面が縮まない）
+  const baseButtonStyle: React.CSSProperties = {
+    appearance: "none",
+    WebkitAppearance: "none",
+    border: "1px solid rgba(17,24,39,0.18)",
+    borderRadius: 14,
+    height: 48,
+    padding: "0 12px",
+    fontSize: 16,
+    fontWeight: 900,
+    lineHeight: "48px",
+    boxSizing: "border-box",
+    background: "#ffffff",
+    color: "#111827",
+    boxShadow: "0 2px 10px rgba(0,0,0,0.06)",
+    cursor: "pointer",
+    outline: "none",
+  };
+
   useEffect(() => {
     return () => clearAiTimers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -491,7 +510,6 @@ export default function App() {
     }));
   }
 
-  // ★ボタンを「捜索する」「移動する」に
   function setPoliceModeSearch() {
     if (state.phase !== "POLICE_TURN") return;
     if (!currentHeliCanAct()) return;
@@ -583,7 +601,7 @@ export default function App() {
     aiTimersRef.current.push(t);
   }
 
-  // ★行動が0になったら自動でターン終了（ボタンは廃止）
+  // 行動が0になったら自動でターン終了
   useEffect(() => {
     if (state.phase !== "POLICE_TURN") return;
     if (state.actionsLeft !== 0) return;
@@ -785,7 +803,6 @@ export default function App() {
     }
 
     if (state.role === "POLICE") {
-      // ★捜索モードのときだけビルタップで捜索できる
       if (state.phase === "POLICE_TURN" && policeSearchMode && state.selectedHeli != null) {
         const node = state.helicopters[state.selectedHeli];
         const cand = surroundingCells(node);
@@ -823,7 +840,7 @@ export default function App() {
         return;
       }
 
-      // ★移動モードのときだけ「空交差点タップで移動」
+      // 移動モードのときだけ「空交差点タップで移動」
       if (policeSearchMode) return;
 
       if (state.selectedHeli == null) return;
@@ -949,7 +966,17 @@ export default function App() {
         </div>
 
         <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          <button onClick={reset} style={{ height: 38, flex: 1 }}>
+          <button
+            onClick={reset}
+            style={{
+              ...baseButtonStyle,
+              height: 38,
+              lineHeight: "38px",
+              flex: 1,
+              fontSize: 14,
+              fontWeight: 800,
+            }}
+          >
             リセット
           </button>
         </div>
@@ -957,7 +984,8 @@ export default function App() {
         <div style={{ marginTop: 10, fontSize: 13, color: "#374151", lineHeight: 1.4 }}>
           {state.phase === "ROLE_SELECT" && "プレイモードを選択してください（犯人 or 警察）。"}
           {state.phase === "POLICE_SETUP" && "警察：ヘリを3機配置してください（交差点タップ）。"}
-          {state.phase === "POLICE_TURN" && (policeSearchMode ? "警察：捜索モード（周囲4ビルのどれか1つをタップ）" : "警察：移動モード（隣接交差点へ移動）")}
+          {state.phase === "POLICE_TURN" &&
+            (policeSearchMode ? "警察：捜索モード（周囲4ビルのどれか1つをタップ）" : "警察：移動モード（隣接交差点へ移動）")}
           {state.phase === "CRIMINAL_AI_MOVING" && "犯人AIが移動中…"}
           {state.phase === "CRIMINAL_HIDE" && "犯人：最初に隠れるビルをタップして決めてください。"}
           {state.phase === "POLICE_AI_TURN" && (state.policeAiThinking ? "警察AIが行動中（痕跡の時系列で推理中）…" : "警察AIのターン")}
@@ -973,13 +1001,14 @@ export default function App() {
             <button
               onClick={() => chooseRole("CRIMINAL")}
               style={{
+                ...baseButtonStyle,
                 flex: 1,
                 height: 56,
-                fontWeight: 900,
+                lineHeight: "56px",
                 borderRadius: 14,
-                border: "1px solid #e5e7eb",
                 background: "#111827",
                 color: "#fff",
+                border: "1px solid rgba(17,24,39,0.30)",
               }}
             >
               犯人で遊ぶ（警察AI）
@@ -987,13 +1016,14 @@ export default function App() {
             <button
               onClick={() => chooseRole("POLICE")}
               style={{
+                ...baseButtonStyle,
                 flex: 1,
                 height: 56,
-                fontWeight: 900,
+                lineHeight: "56px",
                 borderRadius: 14,
-                border: "1px solid #e5e7eb",
                 background: "#0ea5e9",
                 color: "#fff",
+                border: "1px solid rgba(14,165,233,0.45)",
               }}
             >
               警察で遊ぶ（犯人AI）
@@ -1154,6 +1184,9 @@ export default function App() {
                     cursor: !clickable || state.criminalMoving ? "not-allowed" : "pointer",
                     opacity: placed && acted ? 0.55 : 1,
                     color: placedIndex === 2 ? "#111" : "#fff",
+                    appearance: "none",
+                    WebkitAppearance: "none",
+                    outline: "none",
                   }}
                 >
                   {placed ? "🚁" : "·"}
@@ -1197,16 +1230,32 @@ export default function App() {
 
           {state.phase === "POLICE_SETUP" && (
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              <button onClick={() => setState((s) => ({ ...s, helicopters: [], selectedHeli: null }))} style={{ flex: 1, height: 44 }}>
+              <button
+                onClick={() => setState((s) => ({ ...s, helicopters: [], selectedHeli: null }))}
+                style={{ ...baseButtonStyle, flex: 1, height: 44, lineHeight: "44px", fontSize: 14, fontWeight: 800 }}
+              >
                 配置をやり直す
               </button>
-              <button disabled={state.helicopters.length !== 3} onClick={startPoliceTurn} style={{ flex: 1, height: 44, fontWeight: 900 }}>
+              <button
+                disabled={state.helicopters.length !== 3}
+                onClick={startPoliceTurn}
+                style={{
+                  ...baseButtonStyle,
+                  flex: 1,
+                  height: 44,
+                  lineHeight: "44px",
+                  fontSize: 14,
+                  fontWeight: 900,
+                  background: state.helicopters.length === 3 ? "#111827" : "#e5e7eb",
+                  color: state.helicopters.length === 3 ? "#fff" : "#6b7280",
+                  cursor: state.helicopters.length === 3 ? "pointer" : "not-allowed",
+                }}
+              >
                 この配置で開始
               </button>
             </div>
           )}
 
-          {/* ★警察ターンのUI：ボタン2つだけ（捜索する / 移動する） */}
           {state.phase === "POLICE_TURN" && (
             <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
               <div style={{ display: "flex", gap: 8 }}>
@@ -1214,11 +1263,12 @@ export default function App() {
                   disabled={!currentHeliCanAct()}
                   onClick={setPoliceModeSearch}
                   style={{
+                    ...baseButtonStyle,
                     flex: 1,
-                    height: 48,
-                    fontWeight: 900,
-                    background: policeSearchMode ? "#111827" : undefined,
-                    color: policeSearchMode ? "#fff" : undefined,
+                    background: policeSearchMode ? "#111827" : "#ffffff",
+                    color: policeSearchMode ? "#ffffff" : "#111827",
+                    cursor: currentHeliCanAct() ? "pointer" : "not-allowed",
+                    opacity: currentHeliCanAct() ? 1 : 0.55,
                   }}
                 >
                   捜索する
@@ -1227,11 +1277,10 @@ export default function App() {
                 <button
                   onClick={setPoliceModeMove}
                   style={{
+                    ...baseButtonStyle,
                     flex: 1,
-                    height: 48,
-                    fontWeight: 900,
-                    background: !policeSearchMode ? "#111827" : undefined,
-                    color: !policeSearchMode ? "#fff" : undefined,
+                    background: !policeSearchMode ? "#111827" : "#ffffff",
+                    color: !policeSearchMode ? "#ffffff" : "#111827",
                   }}
                 >
                   移動する
