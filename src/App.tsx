@@ -75,13 +75,11 @@ function randomCell(): Cell {
 }
 
 function getHeliColor(index: number) {
-  // 0: green, 1: red, 2: yellow
   if (index === 0) return "#22c55e";
   if (index === 1) return "#ef4444";
   return "#facc15";
 }
 
-// 盤面内の「ビル中心座標」を 0..100% で返す（ルート線用）
 function cellCenterPct(c: Cell) {
   const x = ((c.c + 0.5) / GRID) * 100;
   const y = ((c.r + 0.5) / GRID) * 100;
@@ -114,10 +112,9 @@ function uniqueRandomNodes(count: number): Node[] {
  */
 function criminalAiNextMoveNoStuck(current: Cell, visits: Record<string, number[]>, currentTurn: number) {
   const visited = new Set(Object.keys(visits));
-  const remainingMoves = MAX_TURN - currentTurn; // これから何回移動する必要があるか
+  const remainingMoves = MAX_TURN - currentTurn;
 
   const nextCandidates = neighborsCell(current).filter((n) => !visited.has(keyCell(n)));
-
   if (nextCandidates.length === 0) {
     return { next: current, stuck: true as const };
   }
@@ -165,9 +162,6 @@ function criminalAiNextMoveNoStuck(current: Cell, visits: Record<string, number[
   return { next: pickFrom[0], stuck: false as const };
 }
 
-/**
- * 痕跡（時系列）から「今いそうなセル」のヒートを作る（警察AI用）
- */
 function buildHeat(currentTurn: number, visits: Record<string, number[]>, revealed: Record<string, boolean>): number[][] {
   const heat: number[][] = Array.from({ length: GRID }, () => Array.from({ length: GRID }, () => 0.0001));
 
@@ -268,12 +262,12 @@ type GameState = {
   role: Role | null;
   phase: Phase;
 
-  turn: number; // 犯人の滞在ターン（初期位置=1）
+  turn: number;
 
-  helicopters: Node[]; // 0..3
+  helicopters: Node[];
   selectedHeli: number | null;
   actionsLeft: number;
-  heliActed: boolean[]; // length 3
+  heliActed: boolean[];
 
   criminalPos: Cell | null;
   visits: Record<string, number[]>;
@@ -364,13 +358,11 @@ export default function App() {
     });
   }
 
-  // ===== ROLE SELECT =====
   function chooseRole(role: Role) {
     clearAiTimers();
     setPoliceSearchMode(false);
 
     if (role === "POLICE") {
-      // 警察プレイヤー：犯人AIは初期位置をランダムに選ぶ
       const c0 = randomCell();
       const visits: Record<string, number[]> = {};
       visits[keyCell(c0)] = [1];
@@ -394,7 +386,6 @@ export default function App() {
         policeAiThinking: false,
       }));
     } else {
-      // 犯人プレイヤー：警察AIはヘリをランダム配置、犯人は初期位置を選ぶ
       const helis = uniqueRandomNodes(3);
       setState((s) => ({
         ...s,
@@ -417,7 +408,6 @@ export default function App() {
     }
   }
 
-  // ===== END ROUTE =====
   const routePoints = useMemo(() => {
     if (state.phase !== "END") return [];
     if (state.criminalPath.length < 2) return [];
@@ -429,7 +419,6 @@ export default function App() {
     return routePoints.map((p) => `${p.x},${p.y}`).join(" ");
   }, [routePoints]);
 
-  // ===== POLICE PLAYER MODE =====
   function toggleHeliSetup(n: Node) {
     if (state.phase !== "POLICE_SETUP") return;
 
@@ -518,14 +507,12 @@ export default function App() {
 
     const searched = { ...state.searched, [keyCell(target)]: true };
 
-    // 逮捕
     if (state.criminalPos && target.r === state.criminalPos.r && target.c === state.criminalPos.c) {
       setState((s) => ({ ...s, phase: "END", winner: "POLICE", searched }));
       setPoliceSearchMode(false);
       return;
     }
 
-    // 痕跡開示
     const revealed = { ...state.revealed };
     const v = state.visits[keyCell(target)];
     if (v && v.length > 0 && !revealed[keyCell(target)]) revealed[keyCell(target)] = true;
@@ -547,7 +534,6 @@ export default function App() {
     if (state.phase !== "POLICE_TURN") return;
     if (state.criminalMoving) return;
 
-    // 11ターン逃げ切り（犯人勝ち）
     if (state.turn >= MAX_TURN) {
       setState((s) => ({ ...s, phase: "END", winner: "CRIMINAL" }));
       return;
@@ -555,7 +541,6 @@ export default function App() {
 
     const nextTurn = state.turn + 1;
 
-    // 犯人AIが 5/10/15 秒待ってから必ず移動（待機NGなので“詰み回避”で動ける手を選ぶ）
     const wait: 5 | 10 | 15 = pickRandom([5, 10, 15] as const);
     clearAiTimers();
     setState((s) => ({ ...s, phase: "CRIMINAL_AI_MOVING", criminalMoving: true, moveWaitSec: wait }));
@@ -567,7 +552,7 @@ export default function App() {
 
         const mv = criminalAiNextMoveNoStuck(prev.criminalPos, prev.visits, prev.turn);
 
-        // 念のための最終保険：万一“完全詰み”に来たら「詰み負け」を発生させない（犯人勝ち扱い）
+        // 最終保険（通常ここには来ない想定）
         if (mv.stuck) {
           return { ...prev, phase: "END", winner: "CRIMINAL", criminalMoving: false };
         }
@@ -593,7 +578,6 @@ export default function App() {
     aiTimersRef.current.push(t);
   }
 
-  // 行動残り0で自動ターン終了（警察プレイヤー）
   useEffect(() => {
     if (state.phase !== "POLICE_TURN") return;
     if (state.actionsLeft !== 0) return;
@@ -603,7 +587,6 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.phase, state.actionsLeft, state.criminalMoving]);
 
-  // ===== CRIMINAL PLAYER MODE =====
   function criminalChooseStart(c: Cell) {
     if (state.phase !== "CRIMINAL_HIDE") return;
     if (state.criminalPos != null) return;
@@ -764,7 +747,6 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.phase, state.criminalPos, state.winner]);
 
-  // ===== UI helpers =====
   const visitedSet = useMemo(() => new Set(Object.keys(state.visits)), [state.visits]);
 
   function canTapCell(c: Cell): boolean {
@@ -813,7 +795,10 @@ export default function App() {
       if (state.criminalMoving) return;
 
       const idx = state.helicopters.findIndex((h) => keyNode(h) === keyNode(n));
-      if (idx >= 0) return selectHeli(idx);
+      if (idx >= 0) {
+        selectHeli(idx);
+        return;
+      }
 
       if (state.selectedHeli == null) return;
       moveHeliPlayer(n);
@@ -828,7 +813,7 @@ export default function App() {
 
     const baseBlue = "#1d4ed8";
     const base: React.CSSProperties = {
-      border: "1px solid rgba(255,255,255,0.18)",
+      border: "2px solid rgba(255,255,255,0.40)", // ★道（境界）を太く
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
@@ -836,6 +821,7 @@ export default function App() {
       background: baseBlue,
       cursor: "default",
       position: "relative",
+      boxSizing: "border-box",
     };
 
     if (isRevealed && first != null) {
@@ -844,7 +830,6 @@ export default function App() {
       base.outline = "2px solid rgba(0,0,0,0.12)";
     }
 
-    // 犯人側：移動候補だけ明るく＆太枠、その他暗く、再訪はさらに暗く＋🚫
     const isCriminalMovePhase = state.role === "CRIMINAL" && state.phase === "CRIMINAL_MOVE" && state.criminalPos != null;
     if (isCriminalMovePhase) {
       const neigh = neighborsCell(state.criminalPos!);
@@ -861,14 +846,12 @@ export default function App() {
       }
     }
 
-    // 犯人初期選択：全セルタップ可
     const isCriminalHide = state.role === "CRIMINAL" && state.phase === "CRIMINAL_HIDE" && state.criminalPos == null;
     if (isCriminalHide) {
       base.outline = "2px solid rgba(255,255,255,0.35)";
       base.cursor = "pointer";
     }
 
-    // END時：最終位置を赤地
     if (state.phase === "END" && state.criminalPos && state.criminalPos.r === c.r && state.criminalPos.c === c.c) {
       base.background = "#991b1b";
       base.outline = "3px solid rgba(255,255,255,0.9)";
@@ -895,6 +878,16 @@ export default function App() {
       ? "CRIMINAL"
       : "END";
 
+  const winnerText =
+    state.winner === "POLICE" ? "🚓 警察の勝ち！" : state.winner === "CRIMINAL" ? "🚗 犯人の勝ち！" : "";
+
+  const winnerSub =
+    state.winner === "POLICE"
+      ? "犯人を見つけました"
+      : state.winner === "CRIMINAL"
+      ? "逃げ切りました"
+      : "";
+
   return (
     <div style={{ padding: 12, maxWidth: 560, margin: "0 auto", fontFamily: "system-ui, sans-serif" }}>
       <header
@@ -906,6 +899,22 @@ export default function App() {
           boxShadow: "0 2px 10px rgba(0,0,0,0.06)",
         }}
       >
+        {/* Winner banner */}
+        {state.phase === "END" && state.winner && (
+          <div
+            style={{
+              marginBottom: 10,
+              borderRadius: 14,
+              padding: "12px 14px",
+              background: state.winner === "POLICE" ? "#dcfce7" : "#fee2e2",
+              border: "1px solid rgba(0,0,0,0.08)",
+            }}
+          >
+            <div style={{ fontSize: 24, fontWeight: 900 }}>{winnerText}</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>{winnerSub}</div>
+          </div>
+        )}
+
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
           <div style={{ fontSize: 26, fontWeight: 900 }}>
             Turn <span style={{ fontSize: 34 }}>{state.turn}</span>
@@ -996,18 +1005,19 @@ export default function App() {
                 const style = cellStyle(c);
                 const tappable = canTapCell(c);
 
+                const isTrace = !!state.revealed[k]; // 痕跡が開示されているセル
+                const showTraceBang = isTrace;
+
                 const showNoEntry =
                   state.role === "CRIMINAL" &&
                   state.phase === "CRIMINAL_MOVE" &&
                   visitedSet.has(k) &&
                   !(state.criminalPos && state.criminalPos.r === c.r && state.criminalPos.c === c.c);
 
-                // 車表示：
-                // - 犯人モード：犯人ターン（hide/move）とENDで表示、警察AIターン中は非表示
-                // - 警察モード：ENDのみ表示
                 const showCar =
                   state.criminalPos &&
-                  ((state.role === "CRIMINAL" && (state.phase === "CRIMINAL_HIDE" || state.phase === "CRIMINAL_MOVE" || state.phase === "END")) ||
+                  ((state.role === "CRIMINAL" &&
+                    (state.phase === "CRIMINAL_HIDE" || state.phase === "CRIMINAL_MOVE" || state.phase === "END")) ||
                     (state.role === "POLICE" && state.phase === "END")) &&
                   state.criminalPos.r === c.r &&
                   state.criminalPos.c === c.c;
@@ -1015,6 +1025,31 @@ export default function App() {
                 return (
                   <div key={k} style={style} onClick={() => (tappable ? onCellTap(c) : undefined)}>
                     {showCar ? <span style={{ fontSize: 22 }}>🚗</span> : null}
+
+                    {/* 痕跡マーク：色＋「！」 */}
+                    {showTraceBang ? (
+                      <span
+                        style={{
+                          position: "absolute",
+                          top: 6,
+                          left: 6,
+                          width: 18,
+                          height: 18,
+                          borderRadius: 999,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          background: "rgba(0,0,0,0.35)",
+                          color: "#fff",
+                          fontWeight: 900,
+                          fontSize: 12,
+                        }}
+                        aria-label="trace"
+                      >
+                        !
+                      </span>
+                    ) : null}
+
                     {showNoEntry ? (
                       <span style={{ position: "absolute", bottom: 6, right: 6, fontSize: 14, opacity: 0.95 }}>🚫</span>
                     ) : null}
@@ -1074,7 +1109,6 @@ export default function App() {
               const leftPct = ((n.c + 1) / GRID) * 100;
               const topPct = ((n.r + 1) / GRID) * 100;
 
-              // 警察プレイヤーの移動候補表示
               let isMoveCandidate = false;
               if (
                 state.phase === "POLICE_TURN" &&
@@ -1121,22 +1155,12 @@ export default function App() {
                     opacity: placed && acted ? 0.55 : 1,
                     color: placedIndex === 2 ? "#111" : "#fff",
                   }}
-                  title={
-                    state.phase === "POLICE_SETUP"
-                      ? "ヘリを配置/解除"
-                      : placed
-                      ? acted
-                        ? "行動済み"
-                        : "ヘリを選択"
-                      : "移動先（隣接のみ）"
-                  }
                 >
                   {placed ? "🚁" : "·"}
                 </button>
               );
             })}
 
-            {/* overlays */}
             {(state.phase === "POLICE_AI_TURN" || state.phase === "CRIMINAL_AI_MOVING") && (
               <div
                 style={{
@@ -1171,7 +1195,6 @@ export default function App() {
             )}
           </div>
 
-          {/* Controls */}
           {state.phase === "POLICE_SETUP" && (
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
               <button onClick={() => setState((s) => ({ ...s, helicopters: [], selectedHeli: null }))} style={{ flex: 1, height: 44 }}>
@@ -1203,10 +1226,6 @@ export default function App() {
           )}
         </section>
       </main>
-
-      <footer style={{ marginTop: 12, fontSize: 12, color: "#666" }}>
-        ※犯人AIは「詰み負け（移動先ゼロ）」が起きないように先読みで移動します（待機はしません）。
-      </footer>
     </div>
   );
 }
