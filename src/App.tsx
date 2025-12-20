@@ -926,7 +926,7 @@ export default function App() {
   const winnerSub = state.winner === "POLICE" ? "犯人を見つけました" : state.winner === "CRIMINAL" ? "逃げ切りました" : "";
 
   return (
-    <div style={{ padding: 12, maxWidth: 560, margin: "0 auto", fontFamily: "system-ui, sans-serif", WebkitTextSizeAdjust: "100%", textSizeAdjust: "100%",}}>
+    <div style={{ padding: 12, maxWidth: 560, margin: "0 auto", fontFamily: "system-ui, sans-serif", WebkitTextSizeAdjust: "100%", textSizeAdjust: "100%", overflowX: "hidden", width: "100%",}}>
       <header
         style={{
           border: "1px solid #e5e7eb",
