@@ -1032,7 +1032,7 @@ export default function App() {
         )}
 
         <section>
-          <div style={{ position: "relative", width: "100%", maxWidth: 480, margin: "0 auto", aspectRatio: "1 / 1" }}>
+          <div style={{ position: "relative", width: "min(92vw, 480px)", height: "min(92vw, 480px)", margin: "0 auto",}}>
             <div style={{ position: "absolute", inset: 0, borderRadius: 16, background: "#cbd5e1" }} />
 
             <div
