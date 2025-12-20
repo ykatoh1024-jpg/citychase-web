@@ -926,7 +926,7 @@ export default function App() {
   const winnerSub = state.winner === "POLICE" ? "犯人を見つけました" : state.winner === "CRIMINAL" ? "逃げ切りました" : "";
 
   return (
-    <div style={{ padding: 12, maxWidth: 560, margin: "0 auto", fontFamily: "system-ui, sans-serif", WebkitTextSizeAdjust: "100%", textSizeAdjust: "100%", overflowX: "hidden", width: "100%",}}>
+    <div style={{ padding: 12, maxWidth: 560, margin: "0 auto", fontFamily: "system-ui, sans-serif", WebkitTextSizeAdjust: "100%", textSizeAdjust: "100%", overflowX: "hidden", width: "100%", WebkitFontSmoothing: "antialiased", transform: "translateZ(0)",}}>
       <header
         style={{
           border: "1px solid #e5e7eb",
@@ -981,7 +981,7 @@ export default function App() {
           </button>
         </div>
 
-        <div style={{ marginTop: 10, fontSize: 13, color: "#374151", lineHeight: 1.4, overflowWrap: "anywhere", wordBreak: "break-word",}}>
+        <div style={{ marginTop: 10, fontSize: 13, color: "#374151", lineHeight: 1.4, overflowWrap: "anywhere", wordBreak: "break-word", minHeight: 44,}}>
           {state.phase === "ROLE_SELECT" && "プレイモードを選択してください（犯人 or 警察）。"}
           {state.phase === "POLICE_SETUP" && "警察：ヘリを3機配置してください（交差点タップ）。"}
           {state.phase === "POLICE_TURN" &&
@@ -1032,7 +1032,7 @@ export default function App() {
         )}
 
         <section>
-          <div style={{ position: "relative", width: "min(92vw, 480px)", height: "min(92vw, 480px)", margin: "0 auto",}}>
+          <div style={{ position: "relative", width: "min(92vw, 480px)", height: "min(92vw, 480px)", margin: "0 auto", flex: "0 0 auto",}}>
             <div style={{ position: "absolute", inset: 0, borderRadius: 16, background: "#cbd5e1" }} />
 
             <div
