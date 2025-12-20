@@ -104,6 +104,9 @@ function uniqueRandomNodes(count: number): Node[] {
   return picked;
 }
 
+/**
+ * 犯人AI（詰み回避・待機なし）
+ */
 function criminalAiNextMoveNoStuck(current: Cell, visits: Record<string, number[]>, currentTurn: number) {
   const visited = new Set(Object.keys(visits));
   const remainingMoves = MAX_TURN - currentTurn;
@@ -234,6 +237,9 @@ function bestSearchTarget(node: Node, heat: number[][], searched: Record<string,
   return scored[0].c;
 }
 
+/**
+ * ヘリが重ならないように移動先を選ぶ（occupied を避ける）
+ */
 function bestMoveNodeTowardAvoidOccupied(node: Node, target: Cell, occupied: Set<string>): Node {
   const neigh = neighborsNode(node).filter((n) => !occupied.has(keyNode(n)));
   if (neigh.length === 0) return node;
@@ -286,6 +292,7 @@ export default function App() {
     aiTimersRef.current = [];
   }
 
+  // ★捜索モード（true=捜索、false=移動）
   const [policeSearchMode, setPoliceSearchMode] = useState(false);
 
   const [state, setState] = useState<GameState>(() => ({
@@ -432,6 +439,8 @@ export default function App() {
     if (state.phase !== "POLICE_SETUP") return;
     if (state.helicopters.length !== 3) return;
 
+    setPoliceSearchMode(false); // デフォルトは移動モード
+
     setState((s) => ({
       ...s,
       phase: "POLICE_TURN",
@@ -482,12 +491,14 @@ export default function App() {
     }));
   }
 
-  function enterPoliceSearch() {
+  // ★ボタンを「捜索する」「移動する」に
+  function setPoliceModeSearch() {
     if (state.phase !== "POLICE_TURN") return;
     if (!currentHeliCanAct()) return;
     setPoliceSearchMode(true);
   }
-  function cancelPoliceSearch() {
+  function setPoliceModeMove() {
+    if (state.phase !== "POLICE_TURN") return;
     setPoliceSearchMode(false);
   }
 
@@ -506,7 +517,6 @@ export default function App() {
 
     if (state.criminalPos && target.r === state.criminalPos.r && target.c === state.criminalPos.c) {
       setState((s) => ({ ...s, phase: "END", winner: "POLICE", searched }));
-      setPoliceSearchMode(false);
       return;
     }
 
@@ -524,7 +534,6 @@ export default function App() {
       heliActed,
       actionsLeft: s.actionsLeft - 1,
     }));
-    setPoliceSearchMode(false);
   }
 
   function endPoliceTurn() {
@@ -574,6 +583,7 @@ export default function App() {
     aiTimersRef.current.push(t);
   }
 
+  // ★行動が0になったら自動でターン終了（ボタンは廃止）
   useEffect(() => {
     if (state.phase !== "POLICE_TURN") return;
     if (state.actionsLeft !== 0) return;
@@ -775,6 +785,7 @@ export default function App() {
     }
 
     if (state.role === "POLICE") {
+      // ★捜索モードのときだけビルタップで捜索できる
       if (state.phase === "POLICE_TURN" && policeSearchMode && state.selectedHeli != null) {
         const node = state.helicopters[state.selectedHeli];
         const cand = surroundingCells(node);
@@ -811,6 +822,9 @@ export default function App() {
         selectHeli(idx);
         return;
       }
+
+      // ★移動モードのときだけ「空交差点タップで移動」
+      if (policeSearchMode) return;
 
       if (state.selectedHeli == null) return;
       moveHeliPlayer(n);
@@ -943,11 +957,10 @@ export default function App() {
         <div style={{ marginTop: 10, fontSize: 13, color: "#374151", lineHeight: 1.4 }}>
           {state.phase === "ROLE_SELECT" && "プレイモードを選択してください（犯人 or 警察）。"}
           {state.phase === "POLICE_SETUP" && "警察：ヘリを3機配置してください（交差点タップ）。"}
-          {state.phase === "POLICE_TURN" && "警察：1ターン3行動（各ヘリ1回）。移動 or 捜索（周囲4ビルから1つ）。"}
+          {state.phase === "POLICE_TURN" && (policeSearchMode ? "警察：捜索モード（周囲4ビルのどれか1つをタップ）" : "警察：移動モード（隣接交差点へ移動）")}
           {state.phase === "CRIMINAL_AI_MOVING" && "犯人AIが移動中…"}
           {state.phase === "CRIMINAL_HIDE" && "犯人：最初に隠れるビルをタップして決めてください。"}
-          {state.phase === "POLICE_AI_TURN" &&
-            (state.policeAiThinking ? "警察AIが行動中（痕跡の時系列で推理中）…" : "警察AIのターン")}
+          {state.phase === "POLICE_AI_TURN" && (state.policeAiThinking ? "警察AIが行動中（痕跡の時系列で推理中）…" : "警察AIのターン")}
           {state.phase === "CRIMINAL_MOVE" && "犯人：移動候補（隣接かつ未訪問）だけ明るく表示されています（再訪不可）。"}
           {state.phase === "END" &&
             (state.winner === "CRIMINAL" ? "犯人の勝ち" : "警察の勝ち") + "：白線が犯人ルートです（S=開始 / E=終了）。"}
@@ -990,17 +1003,8 @@ export default function App() {
 
         <section>
           <div style={{ position: "relative", width: "100%", maxWidth: 480, margin: "0 auto", aspectRatio: "1 / 1" }}>
-            {/* Roads background */}
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                borderRadius: 16,
-                background: "#cbd5e1",
-              }}
-            />
+            <div style={{ position: "absolute", inset: 0, borderRadius: 16, background: "#cbd5e1" }} />
 
-            {/* Buildings */}
             <div
               style={{
                 position: "absolute",
@@ -1023,8 +1027,7 @@ export default function App() {
                 const isTrace = !!state.revealed[k];
                 const showCar =
                   state.criminalPos &&
-                  ((state.role === "CRIMINAL" &&
-                    (state.phase === "CRIMINAL_HIDE" || state.phase === "CRIMINAL_MOVE" || state.phase === "END")) ||
+                  ((state.role === "CRIMINAL" && (state.phase === "CRIMINAL_HIDE" || state.phase === "CRIMINAL_MOVE" || state.phase === "END")) ||
                     (state.role === "POLICE" && state.phase === "END")) &&
                   state.criminalPos.r === c.r &&
                   state.criminalPos.c === c.c;
@@ -1033,7 +1036,6 @@ export default function App() {
                   <div key={k} style={style} onClick={() => (tappable ? onCellTap(c) : undefined)}>
                     {showCar ? <span style={{ fontSize: 22 }}>🚗</span> : null}
 
-                    {/* ★痕跡：中央に大きめの「！」 */}
                     {isTrace ? (
                       <span
                         style={{
@@ -1058,7 +1060,6 @@ export default function App() {
               })}
             </div>
 
-            {/* Route on END */}
             {state.phase === "END" && routePoints.length > 0 && (
               <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: "absolute", inset: 0, borderRadius: 16, pointerEvents: "none" }}>
                 <polyline
@@ -1097,7 +1098,6 @@ export default function App() {
               </svg>
             )}
 
-            {/* Nodes / Helicopters */}
             {allNodes.map((n) => {
               const k = keyNode(n);
               const placedIndex = state.helicopters.findIndex((h) => keyNode(h) === k);
@@ -1206,22 +1206,43 @@ export default function App() {
             </div>
           )}
 
+          {/* ★警察ターンのUI：ボタン2つだけ（捜索する / 移動する） */}
           {state.phase === "POLICE_TURN" && (
             <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
               <div style={{ display: "flex", gap: 8 }}>
-                <button disabled={!currentHeliCanAct()} onClick={enterPoliceSearch} style={{ flex: 1, height: 48, fontWeight: 900 }}>
-                  捜索する（1行動）
+                <button
+                  disabled={!currentHeliCanAct()}
+                  onClick={setPoliceModeSearch}
+                  style={{
+                    flex: 1,
+                    height: 48,
+                    fontWeight: 900,
+                    background: policeSearchMode ? "#111827" : undefined,
+                    color: policeSearchMode ? "#fff" : undefined,
+                  }}
+                >
+                  捜索する
                 </button>
-                <button disabled={!policeSearchMode} onClick={cancelPoliceSearch} style={{ width: 120, height: 48 }}>
-                  捜索取消
+
+                <button
+                  onClick={setPoliceModeMove}
+                  style={{
+                    flex: 1,
+                    height: 48,
+                    fontWeight: 900,
+                    background: !policeSearchMode ? "#111827" : undefined,
+                    color: !policeSearchMode ? "#fff" : undefined,
+                  }}
+                >
+                  移動する
                 </button>
               </div>
 
-              <button onClick={endPoliceTurn} disabled={state.criminalMoving} style={{ height: 44 }}>
-                ターン終了（残り行動を捨てる）
-              </button>
-
-              {policeSearchMode && <div style={{ fontSize: 12, color: "#666" }}>周囲4ビルのどれか1つをタップして捜索してください。</div>}
+              {policeSearchMode ? (
+                <div style={{ fontSize: 12, color: "#666" }}>周囲4ビルのどれか1つをタップして捜索してください。</div>
+              ) : (
+                <div style={{ fontSize: 12, color: "#666" }}>移動したい交差点をタップしてください（隣接のみ / 同じ場所に停泊不可）。</div>
+              )}
             </div>
           )}
         </section>
