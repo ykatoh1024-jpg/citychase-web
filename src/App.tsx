@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 type Role = "POLICE" | "CRIMINAL";
 type Phase =
@@ -348,6 +348,28 @@ export default function App() {
     cursor: "pointer",
     outline: "none",
   };
+
+  const [boardPx, setBoardPx] = useState<number>(480);
+
+  useLayoutEffect(() => {
+    const calc = () => {
+      const w = window.visualViewport?.width ?? window.innerWidth;
+      const next = Math.min(Math.floor(w * 0.92), 480);
+
+      // 微小な揺れ（数px）は無視
+      setBoardPx((prev) => (Math.abs(prev - next) >= 12 ? next : prev));
+    };
+
+    calc();
+
+    window.addEventListener("orientationchange", calc);
+    window.addEventListener("resize", calc);
+
+    return () => {
+      window.removeEventListener("orientationchange", calc);
+      window.removeEventListener("resize", calc);
+    };
+  }, []);
 
   useEffect(() => {
     return () => clearAiTimers();
@@ -1032,7 +1054,7 @@ export default function App() {
         )}
 
         <section>
-          <div style={{ position: "relative", width: "min(92vw, 480px)", height: "min(92vw, 480px)", margin: "0 auto", flex: "0 0 auto",}}>
+          <div style={{ position: "relative", width: boardPx, height: boardPx, margin: "0 auto", flex: "0 0 auto",}}>
             <div style={{ position: "absolute", inset: 0, borderRadius: 16, background: "#cbd5e1" }} />
 
             <div
