@@ -951,7 +951,7 @@ export default function App() {
           </div>
         )}
 
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, minWidth: 0, flexWrap: "wrap", }}>
           <div style={{ fontSize: 26, fontWeight: 900 }}>
             Turn <span style={{ fontSize: 34 }}>{state.turn}</span>
             <span style={{ fontSize: 16, fontWeight: 700, color: "#666" }}> / {MAX_TURN}</span>
@@ -981,7 +981,7 @@ export default function App() {
           </button>
         </div>
 
-        <div style={{ marginTop: 10, fontSize: 13, color: "#374151", lineHeight: 1.4 }}>
+        <div style={{ marginTop: 10, fontSize: 13, color: "#374151", lineHeight: 1.4, overflowWrap: "anywhere", wordBreak: "break-word",}}>
           {state.phase === "ROLE_SELECT" && "プレイモードを選択してください（犯人 or 警察）。"}
           {state.phase === "POLICE_SETUP" && "警察：ヘリを3機配置してください（交差点タップ）。"}
           {state.phase === "POLICE_TURN" &&
