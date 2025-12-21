@@ -261,6 +261,8 @@ function bestMoveNodeTowardAvoidOccupied(node: Node, target: Cell, occupied: Set
   return best;
 }
 
+type SearchMark = { turn: number; target: Cell; heliIndex: number };
+
 type GameState = {
   mode: Mode;
   role: Role | null; // SINGLE時：プレイヤーの役割 / PASS時：null
@@ -280,8 +282,8 @@ type GameState = {
   searched: Record<string, boolean>;
   criminalPath: Cell[];
 
-  // ★直前の捜索（履歴は持たない）
-  lastPoliceSearch: { turn: number; target: Cell; heliIndex: number } | null;
+  // ★そのターン中の捜索マーク（最大3つ、犯人手番で見える）
+  lastPoliceSearches: SearchMark[];
 
   policeAiThinking: boolean;
 
@@ -325,7 +327,7 @@ export default function App() {
     searched: {},
     criminalPath: [],
 
-    lastPoliceSearch: null,
+    lastPoliceSearches: [],
 
     policeAiThinking: false,
 
@@ -390,7 +392,7 @@ export default function App() {
       revealed: {},
       searched: {},
       criminalPath: [],
-      lastPoliceSearch: null,
+      lastPoliceSearches: [],
       policeAiThinking: false,
       criminalMoving: false,
       moveWaitSec: 5,
@@ -434,7 +436,7 @@ export default function App() {
       revealed: {},
       searched: {},
       criminalPath: [],
-      lastPoliceSearch: null,
+      lastPoliceSearches: [],
       winner: null,
       criminalMoving: false,
       policeAiThinking: false,
@@ -467,7 +469,7 @@ export default function App() {
         revealed: {},
         searched: {},
         criminalPath: [c0],
-        lastPoliceSearch: null,
+        lastPoliceSearches: [],
         winner: null,
         criminalMoving: false,
         policeAiThinking: false,
@@ -491,7 +493,7 @@ export default function App() {
         revealed: {},
         searched: {},
         criminalPath: [],
-        lastPoliceSearch: null,
+        lastPoliceSearches: [],
         winner: null,
         criminalMoving: false,
         policeAiThinking: false,
@@ -624,11 +626,12 @@ export default function App() {
 
     const searched = { ...state.searched, [keyCell(target)]: true };
 
-    // ★直前捜索を記録（履歴なし）
-    const lastPoliceSearch = { turn: state.turn, target, heliIndex: state.selectedHeli };
+    // ★そのターンの捜索マークに追加（最大3つ）
+    const newMark: SearchMark = { turn: state.turn, target, heliIndex: state.selectedHeli };
+    const lastPoliceSearches = [...state.lastPoliceSearches, newMark].slice(-3);
 
     if (state.criminalPos && target.r === state.criminalPos.r && target.c === state.criminalPos.c) {
-      setState((s) => ({ ...s, phase: "END", winner: "POLICE", searched, lastPoliceSearch }));
+      setState((s) => ({ ...s, phase: "END", winner: "POLICE", searched, lastPoliceSearches }));
       return;
     }
 
@@ -645,7 +648,7 @@ export default function App() {
       revealed,
       heliActed,
       actionsLeft: s.actionsLeft - 1,
-      lastPoliceSearch,
+      lastPoliceSearches,
     }));
   }
 
@@ -665,7 +668,6 @@ export default function App() {
       setState((s) => ({
         ...s,
         phase: "CRIMINAL_MOVE",
-        // 犯人側は1手のみ（ターン番号は犯人の移動後に増やす）
         actionsLeft: ACTIONS_PER_TURN,
         heliActed: s.heliActed,
         selectedHeli: null,
@@ -704,6 +706,8 @@ export default function App() {
           heliActed: [false, false, false],
           selectedHeli: 0,
           criminalMoving: false,
+          // ★ターンが変わったので捜索マークはクリア（次の警察ターンに持ち越さない）
+          lastPoliceSearches: [],
         };
       });
     }, wait * 1000);
@@ -716,7 +720,6 @@ export default function App() {
     if (state.phase !== "POLICE_TURN") return;
     if (state.actionsLeft !== 0) return;
     if (state.criminalMoving) return;
-    // PASS_PLAYでは、犯人に渡す直前に警察画面のままになって欲しいので少し遅延
     const t = window.setTimeout(() => endPoliceTurn(), 0);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -725,7 +728,6 @@ export default function App() {
   function criminalChooseStart(c: Cell) {
     if (state.phase !== "CRIMINAL_HIDE") return;
 
-    // PASS_PLAY：犯人視点でのみ操作可
     if (state.mode === "PASS_PLAY" && state.viewer !== "CRIMINAL") return;
 
     if (state.criminalPos != null) return;
@@ -734,7 +736,6 @@ export default function App() {
     visits[keyCell(c)] = [1];
 
     if (state.mode === "PASS_PLAY") {
-      // 犯人が初期位置を決めたら警察ターンへ（端末渡し）
       setState((s) => ({
         ...s,
         criminalPos: c,
@@ -749,7 +750,6 @@ export default function App() {
       return;
     }
 
-    // SINGLE（犯人プレイ）：警察AIターンへ
     setState((s) => ({
       ...s,
       criminalPos: c,
@@ -781,7 +781,6 @@ export default function App() {
     visits[keyCell(c)] = Array.from(new Set([...(visits[keyCell(c)] ?? []), nextTurn]));
 
     if (state.mode === "PASS_PLAY") {
-      // 犯人が動いたら警察へ渡す
       setState((s) => ({
         ...s,
         turn: nextTurn,
@@ -792,12 +791,13 @@ export default function App() {
         actionsLeft: ACTIONS_PER_TURN,
         heliActed: [false, false, false],
         selectedHeli: 0,
+        // ★次ターン開始なのでクリア
+        lastPoliceSearches: [],
       }));
       showHandoff("POLICE", "警察に端末を渡してください。次の警察ターンです（3回行動）。");
       return;
     }
 
-    // SINGLE（犯人プレイ）：警察AIターンへ
     setState((s) => ({
       ...s,
       turn: nextTurn,
@@ -808,6 +808,8 @@ export default function App() {
       actionsLeft: ACTIONS_PER_TURN,
       heliActed: [false, false, false],
       selectedHeli: null,
+      // ★次ターン開始なのでクリア
+      lastPoliceSearches: [],
     }));
   }
 
@@ -831,35 +833,31 @@ export default function App() {
 
           const heat = buildHeat(prev.turn, prev.visits, prev.revealed);
 
+          // ★必ず未行動ヘリを1機ずつ行動させる（0→1→2）
           const candidates = [0, 1, 2].filter((idx) => !prev.heliActed[idx]);
           if (candidates.length === 0) return prev;
-
           const heliIndex = candidates[0] as 0 | 1 | 2;
+
           const heliNode = prev.helicopters[heliIndex];
 
           const hasAnyTrace = Object.values(prev.revealed).some(Boolean);
           const isLastTurn = prev.turn >= MAX_TURN;
 
-          // 最終ターンは「移動しない」
-          // 捜索だけ行う（次ターンが存在しないため）
+          // 最終ターンは「移動しない」（捜索のみ）
           const doMove = isLastTurn ? false : Math.random() < (hasAnyTrace ? 0.55 : 0.3);
 
+          // ===== 移動（ただし“待機”は禁止） =====
           if (doMove) {
             const target = bestCellByHeat(heat);
 
-            // ★移動先候補（重複回避）を先に作る
             const occupied = new Set(prev.helicopters.map(keyNode));
-            occupied.delete(keyNode(heliNode)); // 自分の現在地はOK
+            occupied.delete(keyNode(heliNode));
 
             const moveCandidates = neighborsNode(heliNode).filter((n) => !occupied.has(keyNode(n)));
 
-            // ★移動できないなら「待機」は禁止なので、この手は捜索に切り替える
+            // 移動できないなら待機は禁止なので捜索へ切り替える（下に続く）
             if (moveCandidates.length > 0) {
-              // bestMoveNodeTowardAvoidOccupied を使っても良いが、
-              // ここでは候補があることを保証しているので「必ず別マス」になる
               const to = bestMoveNodeTowardAvoidOccupied(heliNode, target, occupied);
-
-              // 念のため：to が同じ場所なら fallback で必ず別マスへ
               const finalTo = keyNode(to) !== keyNode(heliNode) ? to : moveCandidates[0];
 
               const helicopters = prev.helicopters.slice();
@@ -876,15 +874,15 @@ export default function App() {
                 actionsLeft: prev.actionsLeft - 1,
               };
             }
-            // moveCandidates が空ならここを抜けて捜索処理へ（下に続く）
           }
 
-
+          // ===== 捜索 =====
           const target = bestSearchTarget(heliNode, heat, prev.searched);
           const searched = { ...prev.searched, [keyCell(target)]: true };
 
-          // ★直前捜索を記録（履歴なし）
-          const lastPoliceSearch = { turn: prev.turn, target, heliIndex };
+          // ★そのターンの捜索マークに追加（最大3つ）
+          const newMark: SearchMark = { turn: prev.turn, target, heliIndex };
+          const lastPoliceSearches = [...prev.lastPoliceSearches, newMark].slice(-3);
 
           if (target.r === prev.criminalPos.r && target.c === prev.criminalPos.c) {
             aiRunningRef.current = false;
@@ -896,7 +894,7 @@ export default function App() {
               actionsLeft: 0,
               policeAiThinking: false,
               searched,
-              lastPoliceSearch,
+              lastPoliceSearches,
             };
           }
 
@@ -914,7 +912,7 @@ export default function App() {
             heliActed,
             selectedHeli: heliIndex,
             actionsLeft: prev.actionsLeft - 1,
-            lastPoliceSearch,
+            lastPoliceSearches,
           };
         });
 
@@ -944,7 +942,7 @@ export default function App() {
     if (state.phase !== "POLICE_AI_TURN") return;
     if (!state.criminalPos) return;
     if (state.winner) return;
-    if (state.mode === "PASS_PLAY") return; // PASS_PLAYではAIなし
+    if (state.mode === "PASS_PLAY") return;
     clearAiTimers();
     runPoliceAiTurn();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -953,7 +951,6 @@ export default function App() {
   const visitedSet = useMemo(() => new Set(Object.keys(state.visits)), [state.visits]);
 
   function canTapCell(c: Cell): boolean {
-    // PASS_PLAYはviewerで制御
     if (state.mode === "PASS_PLAY") {
       if (state.handoff.show) return false;
 
@@ -969,7 +966,6 @@ export default function App() {
         return false;
       }
 
-      // 警察ビュー：捜索時だけ周囲タップ可能
       if (state.viewer === "POLICE") {
         if (state.phase === "POLICE_TURN" && policeSearchMode && state.selectedHeli != null) {
           const node = state.helicopters[state.selectedHeli];
@@ -980,7 +976,6 @@ export default function App() {
       }
     }
 
-    // SINGLE（従来）
     if (state.role === "CRIMINAL") {
       if (state.phase === "CRIMINAL_HIDE" && state.criminalPos == null) return true;
       if (state.phase === "CRIMINAL_MOVE" && state.criminalPos) {
@@ -1018,7 +1013,6 @@ export default function App() {
       return;
     }
 
-    // SINGLE（従来）
     if (state.role === "CRIMINAL") {
       if (state.phase === "CRIMINAL_HIDE") criminalChooseStart(c);
       else if (state.phase === "CRIMINAL_MOVE") criminalMoveTo(c);
@@ -1094,14 +1088,11 @@ export default function App() {
         base.opacity = isVisited ? 0.32 : 0.55;
       }
 
-      // ★直前の捜索セルをハイライト（犯人の手番だけ）
-      if (state.lastPoliceSearch) {
-        const t = state.lastPoliceSearch.target;
-        if (t.r === c.r && t.c === c.c) {
-          base.outline = "4px solid rgba(245, 158, 11, 0.95)";
-          base.boxShadow = "0 0 0 4px rgba(245, 158, 11, 0.25)";
-          base.opacity = 1;
-        }
+      // ★そのターン中の捜索セルは全部ハイライト
+      if (state.lastPoliceSearches.some((m) => m.target.r === c.r && m.target.c === c.c)) {
+        base.outline = "4px solid rgba(245, 158, 11, 0.95)";
+        base.boxShadow = "0 0 0 4px rgba(245, 158, 11, 0.25)";
+        base.opacity = 1;
       }
     }
 
@@ -1145,10 +1136,8 @@ export default function App() {
     state.winner === "POLICE" ? "🚓 警察の勝ち！" : state.winner === "CRIMINAL" ? "🚗 犯人の勝ち！" : "";
   const winnerSub = state.winner === "POLICE" ? "犯人を見つけました" : state.winner === "CRIMINAL" ? "逃げ切りました" : "";
 
-  // 盤面サイズ（aspectRatioを使わず iOS で安定させる）
   const boardSize = "min(92vw, 480px)";
 
-  // 車表示：PASS_PLAYの警察ビューでは見えない（ENDは見える）
   const shouldShowCarNow = (cell: Cell) => {
     if (!state.criminalPos) return false;
     const same = state.criminalPos.r === cell.r && state.criminalPos.c === cell.c;
@@ -1159,7 +1148,6 @@ export default function App() {
     if (state.mode === "PASS_PLAY") {
       return state.viewer === "CRIMINAL";
     }
-    // SINGLE
     if (state.role === "CRIMINAL") return true;
     return false;
   };
@@ -1334,17 +1322,13 @@ export default function App() {
                   state.phase === "CRIMINAL_MOVE" &&
                   ((state.mode === "SINGLE" && state.role === "CRIMINAL") || (state.mode === "PASS_PLAY" && state.viewer === "CRIMINAL"));
 
-                const isLastSearched =
-                  isCriminalViewMove &&
-                  !!state.lastPoliceSearch &&
-                  state.lastPoliceSearch.target.r === c.r &&
-                  state.lastPoliceSearch.target.c === c.c;
+                const isSearchedThisTurn = isCriminalViewMove && state.lastPoliceSearches.some((m) => m.target.r === c.r && m.target.c === c.c);
 
                 return (
                   <div key={k} style={style} onClick={() => (tappable ? onCellTap(c) : undefined)}>
                     {showCar ? <span style={{ fontSize: 22 }}>🚗</span> : null}
 
-                    {isLastSearched ? (
+                    {isSearchedThisTurn ? (
                       <span
                         style={{
                           position: "absolute",
@@ -1354,8 +1338,8 @@ export default function App() {
                           pointerEvents: "none",
                           filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.45))",
                         }}
-                        aria-label="last-search"
-                        title="直前の捜索"
+                        aria-label="search-this-turn"
+                        title="このターンに捜索されたビル"
                       >
                         🔎
                       </span>
@@ -1387,23 +1371,14 @@ export default function App() {
 
             {state.phase === "END" && routePoints.length > 0 && (
               <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: "absolute", inset: 0, borderRadius: 16, pointerEvents: "none" }}>
-                <polyline
-                  points={polylinePoints}
-                  fill="none"
-                  stroke="rgba(255,255,255,0.90)"
-                  strokeWidth="1.8"
-                  strokeLinejoin="round"
-                  strokeLinecap="round"
-                />
+                <polyline points={polylinePoints} fill="none" stroke="rgba(255,255,255,0.90)" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
                 {routePoints.map((p, i) => (
                   <circle
                     key={i}
                     cx={p.x}
                     cy={p.y}
                     r={i === 0 || i === routePoints.length - 1 ? 2.2 : 1.6}
-                    fill={
-                      i === 0 ? "rgba(34,197,94,0.95)" : i === routePoints.length - 1 ? "rgba(239,68,68,0.95)" : "rgba(255,255,255,0.85)"
-                    }
+                    fill={i === 0 ? "rgba(34,197,94,0.95)" : i === routePoints.length - 1 ? "rgba(239,68,68,0.95)" : "rgba(255,255,255,0.85)"}
                     stroke="rgba(0,0,0,0.25)"
                     strokeWidth="0.4"
                   />
@@ -1435,13 +1410,7 @@ export default function App() {
               const topPct = ((n.r + 1) / GRID) * 100;
 
               let isMoveCandidate = false;
-              if (
-                state.phase === "POLICE_TURN" &&
-                state.selectedHeli != null &&
-                state.actionsLeft > 0 &&
-                !state.heliActed[state.selectedHeli] &&
-                !state.criminalMoving
-              ) {
+              if (state.phase === "POLICE_TURN" && state.selectedHeli != null && state.actionsLeft > 0 && !state.heliActed[state.selectedHeli] && !state.criminalMoving) {
                 const from = state.helicopters[state.selectedHeli];
                 isMoveCandidate = neighborsNode(from).some((x) => keyNode(x) === k);
               }
@@ -1514,9 +1483,7 @@ export default function App() {
                     textAlign: "center",
                   }}
                 >
-                  <div style={{ fontSize: 18, fontWeight: 900 }}>
-                    {state.phase === "POLICE_AI_TURN" ? "警察AIが行動中…" : "犯人AIが移動中…"}
-                  </div>
+                  <div style={{ fontSize: 18, fontWeight: 900 }}>{state.phase === "POLICE_AI_TURN" ? "警察AIが行動中…" : "犯人AIが移動中…"}</div>
                   <div style={{ fontSize: 26, marginTop: 10 }}>{state.phase === "POLICE_AI_TURN" ? "🚁🔎" : "🚗💨"}</div>
                 </div>
               </div>
@@ -1546,9 +1513,7 @@ export default function App() {
                     textAlign: "center",
                   }}
                 >
-                  <div style={{ fontSize: 18, fontWeight: 900 }}>
-                    {state.handoff.to === "POLICE" ? "🚓 警察の番" : "🚗 犯人の番"}
-                  </div>
+                  <div style={{ fontSize: 18, fontWeight: 900 }}>{state.handoff.to === "POLICE" ? "🚓 警察の番" : "🚗 犯人の番"}</div>
                   <div style={{ fontSize: 13, marginTop: 10, opacity: 0.95, lineHeight: 1.45 }}>{state.handoff.message}</div>
                   <button
                     onClick={acceptHandoff}
