@@ -280,6 +280,9 @@ type GameState = {
   searched: Record<string, boolean>;
   criminalPath: Cell[];
 
+  // ★直前の捜索（履歴は持たない）
+  lastPoliceSearch: { turn: number; target: Cell; heliIndex: number } | null;
+
   policeAiThinking: boolean;
 
   criminalMoving: boolean;
@@ -321,6 +324,8 @@ export default function App() {
     revealed: {},
     searched: {},
     criminalPath: [],
+
+    lastPoliceSearch: null,
 
     policeAiThinking: false,
 
@@ -385,6 +390,7 @@ export default function App() {
       revealed: {},
       searched: {},
       criminalPath: [],
+      lastPoliceSearch: null,
       policeAiThinking: false,
       criminalMoving: false,
       moveWaitSec: 5,
@@ -428,6 +434,7 @@ export default function App() {
       revealed: {},
       searched: {},
       criminalPath: [],
+      lastPoliceSearch: null,
       winner: null,
       criminalMoving: false,
       policeAiThinking: false,
@@ -460,6 +467,7 @@ export default function App() {
         revealed: {},
         searched: {},
         criminalPath: [c0],
+        lastPoliceSearch: null,
         winner: null,
         criminalMoving: false,
         policeAiThinking: false,
@@ -483,6 +491,7 @@ export default function App() {
         revealed: {},
         searched: {},
         criminalPath: [],
+        lastPoliceSearch: null,
         winner: null,
         criminalMoving: false,
         policeAiThinking: false,
@@ -615,8 +624,11 @@ export default function App() {
 
     const searched = { ...state.searched, [keyCell(target)]: true };
 
+    // ★直前捜索を記録（履歴なし）
+    const lastPoliceSearch = { turn: state.turn, target, heliIndex: state.selectedHeli };
+
     if (state.criminalPos && target.r === state.criminalPos.r && target.c === state.criminalPos.c) {
-      setState((s) => ({ ...s, phase: "END", winner: "POLICE", searched }));
+      setState((s) => ({ ...s, phase: "END", winner: "POLICE", searched, lastPoliceSearch }));
       return;
     }
 
@@ -633,6 +645,7 @@ export default function App() {
       revealed,
       heliActed,
       actionsLeft: s.actionsLeft - 1,
+      lastPoliceSearch,
     }));
   }
 
@@ -829,9 +842,7 @@ export default function App() {
 
           // 最終ターンは「移動しない」
           // 捜索だけ行う（次ターンが存在しないため）
-          const doMove = isLastTurn
-            ? false
-            : Math.random() < (hasAnyTrace ? 0.55 : 0.3);
+          const doMove = isLastTurn ? false : Math.random() < (hasAnyTrace ? 0.55 : 0.3);
 
           if (doMove) {
             const target = bestCellByHeat(heat);
@@ -870,6 +881,9 @@ export default function App() {
           const target = bestSearchTarget(heliNode, heat, prev.searched);
           const searched = { ...prev.searched, [keyCell(target)]: true };
 
+          // ★直前捜索を記録（履歴なし）
+          const lastPoliceSearch = { turn: prev.turn, target, heliIndex };
+
           if (target.r === prev.criminalPos.r && target.c === prev.criminalPos.c) {
             aiRunningRef.current = false;
             return {
@@ -880,6 +894,7 @@ export default function App() {
               actionsLeft: 0,
               policeAiThinking: false,
               searched,
+              lastPoliceSearch,
             };
           }
 
@@ -897,6 +912,7 @@ export default function App() {
             heliActed,
             selectedHeli: heliIndex,
             actionsLeft: prev.actionsLeft - 1,
+            lastPoliceSearch,
           };
         });
 
@@ -1074,6 +1090,16 @@ export default function App() {
         base.opacity = 1;
       } else {
         base.opacity = isVisited ? 0.32 : 0.55;
+      }
+
+      // ★直前の捜索セルをハイライト（犯人の手番だけ）
+      if (state.lastPoliceSearch) {
+        const t = state.lastPoliceSearch.target;
+        if (t.r === c.r && t.c === c.c) {
+          base.outline = "4px solid rgba(245, 158, 11, 0.95)";
+          base.boxShadow = "0 0 0 4px rgba(245, 158, 11, 0.25)";
+          base.opacity = 1;
+        }
       }
     }
 
@@ -1302,9 +1328,36 @@ export default function App() {
                 const isTrace = !!state.revealed[k];
                 const showCar = shouldShowCarNow(c);
 
+                const isCriminalViewMove =
+                  state.phase === "CRIMINAL_MOVE" &&
+                  ((state.mode === "SINGLE" && state.role === "CRIMINAL") || (state.mode === "PASS_PLAY" && state.viewer === "CRIMINAL"));
+
+                const isLastSearched =
+                  isCriminalViewMove &&
+                  !!state.lastPoliceSearch &&
+                  state.lastPoliceSearch.target.r === c.r &&
+                  state.lastPoliceSearch.target.c === c.c;
+
                 return (
                   <div key={k} style={style} onClick={() => (tappable ? onCellTap(c) : undefined)}>
                     {showCar ? <span style={{ fontSize: 22 }}>🚗</span> : null}
+
+                    {isLastSearched ? (
+                      <span
+                        style={{
+                          position: "absolute",
+                          top: 6,
+                          right: 6,
+                          fontSize: 16,
+                          pointerEvents: "none",
+                          filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.45))",
+                        }}
+                        aria-label="last-search"
+                        title="直前の捜索"
+                      >
+                        🔎
+                      </span>
+                    ) : null}
 
                     {isTrace ? (
                       <span
