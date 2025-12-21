@@ -847,36 +847,38 @@ export default function App() {
           if (doMove) {
             const target = bestCellByHeat(heat);
 
+            // ★移動先候補（重複回避）を先に作る
             const occupied = new Set(prev.helicopters.map(keyNode));
-            occupied.delete(keyNode(heliNode));
-            const to = bestMoveNodeTowardAvoidOccupied(heliNode, target, occupied);
+            occupied.delete(keyNode(heliNode)); // 自分の現在地はOK
 
-            const helicopters = prev.helicopters.slice();
-            helicopters[heliIndex] = to;
+            const moveCandidates = neighborsNode(heliNode).filter((n) => !occupied.has(keyNode(n)));
 
-            // 念のため重複補正
-            const uniq = new Set(helicopters.map(keyNode));
-            if (uniq.size < 3) {
-              const used = new Set(helicopters.map(keyNode));
-              const all: Node[] = [];
-              for (let r = 0; r < NODE; r++) for (let c = 0; c < NODE; c++) all.push({ r, c });
-              // そのヘリ以外を固定して、空きに逃がす
-              for (let j = 0; j < 3; j++) if (j !== heliIndex) used.add(keyNode(helicopters[j]));
-              const alt = all.filter((n) => !used.has(keyNode(n)));
-              if (alt.length > 0) helicopters[heliIndex] = pickRandom(alt);
+            // ★移動できないなら「待機」は禁止なので、この手は捜索に切り替える
+            if (moveCandidates.length > 0) {
+              // bestMoveNodeTowardAvoidOccupied を使っても良いが、
+              // ここでは候補があることを保証しているので「必ず別マス」になる
+              const to = bestMoveNodeTowardAvoidOccupied(heliNode, target, occupied);
+
+              // 念のため：to が同じ場所なら fallback で必ず別マスへ
+              const finalTo = keyNode(to) !== keyNode(heliNode) ? to : moveCandidates[0];
+
+              const helicopters = prev.helicopters.slice();
+              helicopters[heliIndex] = finalTo;
+
+              const heliActed = prev.heliActed.slice();
+              heliActed[heliIndex] = true;
+
+              return {
+                ...prev,
+                helicopters,
+                heliActed,
+                selectedHeli: heliIndex,
+                actionsLeft: prev.actionsLeft - 1,
+              };
             }
-
-            const heliActed = prev.heliActed.slice();
-            heliActed[heliIndex] = true;
-
-            return {
-              ...prev,
-              helicopters,
-              heliActed,
-              selectedHeli: heliIndex,
-              actionsLeft: prev.actionsLeft - 1,
-            };
+            // moveCandidates が空ならここを抜けて捜索処理へ（下に続く）
           }
+
 
           const target = bestSearchTarget(heliNode, heat, prev.searched);
           const searched = { ...prev.searched, [keyCell(target)]: true };
