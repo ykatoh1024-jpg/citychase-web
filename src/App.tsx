@@ -825,7 +825,13 @@ export default function App() {
           const heliNode = prev.helicopters[heliIndex];
 
           const hasAnyTrace = Object.values(prev.revealed).some(Boolean);
-          const doMove = Math.random() < (hasAnyTrace ? 0.55 : 0.3);
+          const isLastTurn = prev.turn >= MAX_TURN;
+
+          // 最終ターンは「移動しない」
+          // 捜索だけ行う（次ターンが存在しないため）
+          const doMove = isLastTurn
+            ? false
+            : Math.random() < (hasAnyTrace ? 0.55 : 0.3);
 
           if (doMove) {
             const target = bestCellByHeat(heat);
