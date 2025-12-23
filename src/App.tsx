@@ -265,8 +265,8 @@ type SearchMark = { turn: number; target: Cell; heliIndex: number };
 
 type GameState = {
   mode: Mode;
-  role: Role | null; // SINGLE時：プレイヤーの役割 / PASS時：null
-  viewer: Viewer; // PASS時：いま端末を見ている人
+  role: Role | null;
+  viewer: Viewer;
   phase: Phase;
 
   turn: number;
@@ -305,7 +305,6 @@ export default function App() {
     aiTimersRef.current = [];
   }
 
-  // ★捜索モード（true=捜索、false=移動）
   const [policeSearchMode, setPoliceSearchMode] = useState(false);
 
   const [state, setState] = useState<GameState>(() => ({
@@ -350,7 +349,6 @@ export default function App() {
     return a;
   }, []);
 
-  // ボタンのベーススタイル
   const baseButtonStyle: React.CSSProperties = {
     appearance: "none",
     WebkitAppearance: "none",
@@ -416,7 +414,6 @@ export default function App() {
     }));
   }
 
-  // ===== モード選択（SINGLEは従来 / PASS_PLAYは同端末対戦） =====
   function choosePassPlay() {
     clearAiTimers();
     setPoliceSearchMode(false);
@@ -537,7 +534,6 @@ export default function App() {
     setPoliceSearchMode(false);
 
     if (state.mode === "PASS_PLAY") {
-      // 犯人に端末を渡して初期位置を決めてもらう
       setState((s) => ({
         ...s,
         phase: "CRIMINAL_HIDE",
@@ -549,7 +545,6 @@ export default function App() {
       return;
     }
 
-    // SINGLE（従来）：警察ターン開始
     setState((s) => ({
       ...s,
       phase: "POLICE_TURN",
@@ -626,7 +621,6 @@ export default function App() {
 
     const searched = { ...state.searched, [keyCell(target)]: true };
 
-    // ★そのターンの捜索マークに追加（最大3つ）
     const newMark: SearchMark = { turn: state.turn, target, heliIndex: state.selectedHeli };
     const lastPoliceSearches = [...state.lastPoliceSearches, newMark].slice(-3);
 
@@ -664,7 +658,6 @@ export default function App() {
     const nextTurn = state.turn + 1;
 
     if (state.mode === "PASS_PLAY") {
-      // 端末を犯人に渡して1手移動
       setState((s) => ({
         ...s,
         phase: "CRIMINAL_MOVE",
@@ -676,7 +669,6 @@ export default function App() {
       return;
     }
 
-    // SINGLE：犯人AI移動（従来）
     const wait: 5 | 10 | 15 = pickRandom([5, 10, 15] as const);
     clearAiTimers();
     setState((s) => ({ ...s, phase: "CRIMINAL_AI_MOVING", criminalMoving: true, moveWaitSec: wait }));
@@ -706,7 +698,6 @@ export default function App() {
           heliActed: [false, false, false],
           selectedHeli: 0,
           criminalMoving: false,
-          // ★ターンが変わったので捜索マークはクリア（次の警察ターンに持ち越さない）
           lastPoliceSearches: [],
         };
       });
@@ -715,7 +706,6 @@ export default function App() {
     aiTimersRef.current.push(t);
   }
 
-  // 行動が0になったら自動でターン終了
   useEffect(() => {
     if (state.phase !== "POLICE_TURN") return;
     if (state.actionsLeft !== 0) return;
@@ -727,9 +717,7 @@ export default function App() {
 
   function criminalChooseStart(c: Cell) {
     if (state.phase !== "CRIMINAL_HIDE") return;
-
     if (state.mode === "PASS_PLAY" && state.viewer !== "CRIMINAL") return;
-
     if (state.criminalPos != null) return;
 
     const visits = { ...state.visits };
@@ -765,7 +753,6 @@ export default function App() {
   function criminalMoveTo(c: Cell) {
     if (state.phase !== "CRIMINAL_MOVE") return;
     if (!state.criminalPos) return;
-
     if (state.mode === "PASS_PLAY" && state.viewer !== "CRIMINAL") return;
 
     const neigh = neighborsCell(state.criminalPos);
@@ -791,7 +778,6 @@ export default function App() {
         actionsLeft: ACTIONS_PER_TURN,
         heliActed: [false, false, false],
         selectedHeli: 0,
-        // ★次ターン開始なのでクリア
         lastPoliceSearches: [],
       }));
       showHandoff("POLICE", "警察に端末を渡してください。次の警察ターンです（3回行動）。");
@@ -808,7 +794,6 @@ export default function App() {
       actionsLeft: ACTIONS_PER_TURN,
       heliActed: [false, false, false],
       selectedHeli: null,
-      // ★次ターン開始なのでクリア
       lastPoliceSearches: [],
     }));
   }
@@ -833,7 +818,6 @@ export default function App() {
 
           const heat = buildHeat(prev.turn, prev.visits, prev.revealed);
 
-          // ★必ず未行動ヘリを1機ずつ行動させる（0→1→2）
           const candidates = [0, 1, 2].filter((idx) => !prev.heliActed[idx]);
           if (candidates.length === 0) return prev;
           const heliIndex = candidates[0] as 0 | 1 | 2;
@@ -843,10 +827,8 @@ export default function App() {
           const hasAnyTrace = Object.values(prev.revealed).some(Boolean);
           const isLastTurn = prev.turn >= MAX_TURN;
 
-          // 最終ターンは「移動しない」（捜索のみ）
           const doMove = isLastTurn ? false : Math.random() < (hasAnyTrace ? 0.55 : 0.3);
 
-          // ===== 移動（ただし“待機”は禁止） =====
           if (doMove) {
             const target = bestCellByHeat(heat);
 
@@ -855,7 +837,6 @@ export default function App() {
 
             const moveCandidates = neighborsNode(heliNode).filter((n) => !occupied.has(keyNode(n)));
 
-            // 移動できないなら待機は禁止なので捜索へ切り替える（下に続く）
             if (moveCandidates.length > 0) {
               const to = bestMoveNodeTowardAvoidOccupied(heliNode, target, occupied);
               const finalTo = keyNode(to) !== keyNode(heliNode) ? to : moveCandidates[0];
@@ -876,11 +857,9 @@ export default function App() {
             }
           }
 
-          // ===== 捜索 =====
           const target = bestSearchTarget(heliNode, heat, prev.searched);
           const searched = { ...prev.searched, [keyCell(target)]: true };
 
-          // ★そのターンの捜索マークに追加（最大3つ）
           const newMark: SearchMark = { turn: prev.turn, target, heliIndex };
           const lastPoliceSearches = [...prev.lastPoliceSearches, newMark].slice(-3);
 
@@ -1088,7 +1067,6 @@ export default function App() {
         base.opacity = isVisited ? 0.32 : 0.55;
       }
 
-      // ★そのターン中の捜索セルは全部ハイライト
       if (state.lastPoliceSearches.some((m) => m.target.r === c.r && m.target.c === c.c)) {
         base.outline = "4px solid rgba(245, 158, 11, 0.95)";
         base.boxShadow = "0 0 0 4px rgba(245, 158, 11, 0.25)";
@@ -1152,25 +1130,134 @@ export default function App() {
     return false;
   };
 
+  const isTitleScreen = state.phase === "ROLE_SELECT";
+
   return (
     <div style={{ padding: 12, maxWidth: 560, margin: "0 auto", fontFamily: "system-ui, sans-serif", overflowX: "hidden", width: "100%" }}>
       <header
-        style={{
-          border: "1px solid #e5e7eb",
-          borderRadius: 14,
-          padding: 12,
-          background: "#fff",
-          boxShadow: "0 2px 10px rgba(0,0,0,0.06)",
-        }}
+        style={
+          isTitleScreen
+            ? { padding: 0, border: "none", background: "transparent", boxShadow: "none" }
+            : {
+                border: "1px solid #e5e7eb",
+                borderRadius: 14,
+                padding: 12,
+                background: "#fff",
+                boxShadow: "0 2px 10px rgba(0,0,0,0.06)",
+              }
+        }
       >
-        {/* ★最初の画面（ROLE_SELECT）は“タイトルだけ” */}
-        {state.phase === "ROLE_SELECT" ? (
-          <div style={{ padding: "10px 6px" }}>
-            <div style={{ fontSize: 30, fontWeight: 1000, letterSpacing: 0.5, color: "#111827" }}>シティチェイス</div>
-            <div style={{ marginTop: 6, fontSize: 13, fontWeight: 700, color: "#6b7280", lineHeight: 1.4 }}>
-              ボードゲーム「シティチェイス」をスマホで遊べるWebアプリ
+        {isTitleScreen ? (
+          <>
+            <div
+              style={{
+                borderRadius: 18,
+                padding: "18px 16px",
+                background:
+                  "radial-gradient(1200px 420px at 20% 0%, rgba(14,165,233,0.28), transparent 55%), radial-gradient(900px 380px at 80% 10%, rgba(34,197,94,0.22), transparent 60%), linear-gradient(180deg, #0b1220, #0f172a)",
+                border: "1px solid rgba(255,255,255,0.10)",
+                boxShadow: "0 18px 40px rgba(0,0,0,0.35)",
+                overflow: "hidden",
+                position: "relative",
+              }}
+            >
+              <div
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  inset: -60,
+                  background:
+                    "linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px)",
+                  backgroundSize: "36px 36px",
+                  transform: "rotate(-10deg)",
+                  opacity: 0.18,
+                  pointerEvents: "none",
+                }}
+              />
+              <div style={{ position: "relative" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "8px 10px",
+                      borderRadius: 999,
+                      background: "rgba(255,255,255,0.08)",
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      color: "rgba(255,255,255,0.86)",
+                      fontSize: 12,
+                      fontWeight: 800,
+                      letterSpacing: 0.4,
+                    }}
+                  >
+                    <span style={{ fontSize: 14 }}>🚁</span>
+                    CITY CHASE
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 6,
+                      alignItems: "center",
+                      color: "rgba(255,255,255,0.85)",
+                      fontSize: 12,
+                      fontWeight: 800,
+                    }}
+                  >
+                    <span style={{ opacity: 0.9 }}>🚓</span>
+                    <span style={{ opacity: 0.9 }}>vs</span>
+                    <span style={{ opacity: 0.9 }}>🚗</span>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 10,
+                    fontSize: 36,
+                    fontWeight: 1000,
+                    letterSpacing: 1.2,
+                    color: "#ffffff",
+                    lineHeight: 1.05,
+                    textShadow: "0 10px 30px rgba(0,0,0,0.55)",
+                  }}
+                >
+                  シティチェイス
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 10,
+                    color: "rgba(255,255,255,0.78)",
+                    fontSize: 13,
+                    fontWeight: 800,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  追い詰めるか、逃げ切るか。
+                  <br />
+                  3機のヘリで心理戦。
+                </div>
+              </div>
             </div>
-          </div>
+
+            <div
+              style={{
+                marginTop: 12,
+                borderRadius: 16,
+                padding: "12px 12px",
+                background: "linear-gradient(180deg, rgba(17,24,39,0.04), rgba(17,24,39,0.02))",
+                border: "1px solid rgba(17,24,39,0.08)",
+                boxShadow: "0 10px 24px rgba(0,0,0,0.06)",
+                fontSize: 13,
+                color: "#374151",
+                fontWeight: 800,
+                lineHeight: 1.45,
+              }}
+            >
+              モードを選択してください（ソロ or 友達対戦）。
+            </div>
+          </>
         ) : (
           <>
             {state.phase === "END" && state.winner && (
@@ -1217,61 +1304,74 @@ export default function App() {
                 リセット
               </button>
             </div>
+
+            <div
+              style={{
+                marginTop: 10,
+                fontSize: 13,
+                color: "#374151",
+                lineHeight: 1.4,
+                overflowWrap: "anywhere",
+                wordBreak: "break-word",
+                minHeight: 44,
+              }}
+            >
+              {state.phase === "POLICE_SETUP" && (state.mode === "PASS_PLAY" ? "友達対戦：警察がヘリを3機配置（交差点タップ）。" : "警察：ヘリを3機配置してください（交差点タップ）。")}
+              {state.phase === "POLICE_TURN" &&
+                (policeSearchMode ? "警察：捜索モード（周囲4ビルのどれか1つをタップ）" : "警察：移動モード（隣接交差点へ移動）")}
+              {state.phase === "CRIMINAL_AI_MOVING" && "犯人AIが移動中…"}
+              {state.phase === "CRIMINAL_HIDE" && "犯人：最初に隠れるビルをタップして決めてください。"}
+              {state.phase === "POLICE_AI_TURN" && (state.policeAiThinking ? "警察AIが行動中（痕跡の時系列で推理中）…" : "警察AIのターン")}
+              {state.phase === "CRIMINAL_MOVE" && "犯人：移動候補（隣接かつ未訪問）だけ明るく表示（再訪不可）。"}
+              {state.phase === "END" && (state.winner === "CRIMINAL" ? "犯人の勝ち" : "警察の勝ち") + "：白線が犯人ルートです（S=開始 / E=終了）。"}
+            </div>
           </>
         )}
-
-        <div
-          style={{
-            marginTop: 10,
-            fontSize: 13,
-            color: "#374151",
-            lineHeight: 1.4,
-            overflowWrap: "anywhere",
-            wordBreak: "break-word",
-            minHeight: 44,
-          }}
-        >
-          {state.phase === "ROLE_SELECT" && "モードを選択してください（ソロ or 友達対戦）。"}
-          {state.phase === "POLICE_SETUP" && (state.mode === "PASS_PLAY" ? "友達対戦：警察がヘリを3機配置（交差点タップ）。" : "警察：ヘリを3機配置してください（交差点タップ）。")}
-          {state.phase === "POLICE_TURN" && (policeSearchMode ? "警察：捜索モード（周囲4ビルのどれか1つをタップ）" : "警察：移動モード（隣接交差点へ移動）")}
-          {state.phase === "CRIMINAL_AI_MOVING" && "犯人AIが移動中…"}
-          {state.phase === "CRIMINAL_HIDE" && "犯人：最初に隠れるビルをタップして決めてください。"}
-          {state.phase === "POLICE_AI_TURN" && (state.policeAiThinking ? "警察AIが行動中（痕跡の時系列で推理中）…" : "警察AIのターン")}
-          {state.phase === "CRIMINAL_MOVE" && "犯人：移動候補（隣接かつ未訪問）だけ明るく表示（再訪不可）。"}
-          {state.phase === "END" && (state.winner === "CRIMINAL" ? "犯人の勝ち" : "警察の勝ち") + "：白線が犯人ルートです（S=開始 / E=終了）。"}
-        </div>
       </header>
 
       <main style={{ display: "grid", gap: 12, marginTop: 12 }}>
         {state.phase === "ROLE_SELECT" && (
-          <section style={{ display: "grid", gap: 10 }}>
+          <section
+            style={{
+              display: "grid",
+              gap: 12,
+              padding: 12,
+              borderRadius: 16,
+              background: "linear-gradient(180deg, rgba(17,24,39,0.04), rgba(17,24,39,0.02))",
+              border: "1px solid rgba(17,24,39,0.08)",
+              boxShadow: "0 10px 24px rgba(0,0,0,0.06)",
+            }}
+          >
             <div style={{ display: "flex", gap: 10 }}>
               <button
                 onClick={() => chooseRoleSingle("CRIMINAL")}
                 style={{
                   ...baseButtonStyle,
                   flex: 1,
-                  height: 56,
-                  lineHeight: "56px",
-                  borderRadius: 14,
-                  background: "#111827",
+                  height: 58,
+                  lineHeight: "58px",
+                  borderRadius: 16,
+                  background: "linear-gradient(180deg, #111827, #0b1220)",
                   color: "#fff",
-                  border: "1px solid rgba(17,24,39,0.30)",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  boxShadow: "0 14px 28px rgba(0,0,0,0.18)",
                 }}
               >
                 ソロ：犯人（警察AI）
               </button>
+
               <button
                 onClick={() => chooseRoleSingle("POLICE")}
                 style={{
                   ...baseButtonStyle,
                   flex: 1,
-                  height: 56,
-                  lineHeight: "56px",
-                  borderRadius: 14,
-                  background: "#0ea5e9",
+                  height: 58,
+                  lineHeight: "58px",
+                  borderRadius: 16,
+                  background: "linear-gradient(180deg, #0ea5e9, #0284c7)",
                   color: "#fff",
-                  border: "1px solid rgba(14,165,233,0.45)",
+                  border: "1px solid rgba(255,255,255,0.18)",
+                  boxShadow: "0 14px 28px rgba(2,132,199,0.18)",
                 }}
               >
                 ソロ：警察（犯人AI）
@@ -1282,12 +1382,13 @@ export default function App() {
               onClick={choosePassPlay}
               style={{
                 ...baseButtonStyle,
-                height: 56,
-                lineHeight: "56px",
-                borderRadius: 14,
-                background: "#16a34a",
+                height: 58,
+                lineHeight: "58px",
+                borderRadius: 16,
+                background: "linear-gradient(180deg, #16a34a, #15803d)",
                 color: "#fff",
-                border: "1px solid rgba(22,163,74,0.45)",
+                border: "1px solid rgba(255,255,255,0.18)",
+                boxShadow: "0 14px 28px rgba(21,128,61,0.18)",
               }}
             >
               友達と対戦（同じ端末で交代）
