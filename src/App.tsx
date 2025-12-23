@@ -18,6 +18,8 @@ type Viewer = "POLICE" | "CRIMINAL";
 type Cell = { r: number; c: number }; // 0..4
 type Node = { r: number; c: number }; // 0..3
 
+type SearchMark = { turn: number; target: Cell; heliIndex: number };
+
 const GRID = 5;
 const NODE = 4;
 const MAX_TURN = 11;
@@ -261,39 +263,6 @@ function bestMoveNodeTowardAvoidOccupied(node: Node, target: Cell, occupied: Set
   return best;
 }
 
-/* ========= 心理戦（無線）関連 ========= */
-
-type Quadrant = "北西" | "北東" | "南西" | "南東";
-type RadioState = { turn: number; lines: string[] };
-type SearchMark = { turn: number; target: Cell; heliIndex: number };
-
-function quadrantOfCell(c: Cell): Quadrant {
-  const north = c.r <= 2;
-  const west = c.c <= 2;
-  if (north && west) return "北西";
-  if (north && !west) return "北東";
-  if (!north && west) return "南西";
-  return "南東";
-}
-function heatConfidence(heat: number[][]) {
-  let mx = 0;
-  for (let r = 0; r < GRID; r++) for (let c = 0; c < GRID; c++) mx = Math.max(mx, heat[r][c]);
-  return Math.max(35, Math.min(95, Math.round(35 + mx * 60)));
-}
-function fakeQuadrant(real: Quadrant): Quadrant {
-  const all: Quadrant[] = ["北西", "北東", "南西", "南東"];
-  const others = all.filter((q) => q !== real);
-  return pickRandom(others);
-}
-function maybeFakeFocus(real: Quadrant, confidence: number, turn: number) {
-  // ✅ 最終ターンはフェイク完全OFF
-  if (turn >= MAX_TURN) return { focus: real, isFake: false as const };
-
-  if (confidence < 55 && Math.random() < 0.7) {
-    return { focus: fakeQuadrant(real), isFake: true as const };
-  }
-  return { focus: real, isFake: false as const };
-}
 
 type GameState = {
   mode: Mode;
@@ -316,9 +285,6 @@ type GameState = {
 
   // ✅ 「直前の警察AIの捜索」3つを残す
   lastPoliceSearches: SearchMark[];
-
-  // ✅ 無線（心理戦）※PASS_PLAYでは出さない
-  policeAiRadio: RadioState;
 
   policeAiThinking: boolean;
 
@@ -363,7 +329,6 @@ export default function App() {
     criminalPath: [],
 
     lastPoliceSearches: [],
-    policeAiRadio: { turn: 1, lines: [] },
 
     policeAiThinking: false,
 
@@ -429,7 +394,6 @@ export default function App() {
       searched: {},
       criminalPath: [],
       lastPoliceSearches: [],
-      policeAiRadio: { turn: 1, lines: [] },
       policeAiThinking: false,
       criminalMoving: false,
       moveWaitSec: 5,
@@ -453,13 +417,6 @@ export default function App() {
     }));
   }
 
-  // ===== 無線ログを積む（PASS_PLAYでは何もしない） =====
-  function pushRadio(prev: GameState, line: string): GameState {
-    if (prev.mode === "PASS_PLAY") return prev; // ✅友達対戦は無線不要
-    const next = [...prev.policeAiRadio.lines, line].slice(-6);
-    return { ...prev, policeAiRadio: { turn: prev.turn, lines: next } };
-  }
-
   // ===== モード選択（SINGLEは従来 / PASS_PLAYは同端末対戦） =====
   function choosePassPlay() {
     clearAiTimers();
@@ -481,7 +438,6 @@ export default function App() {
       searched: {},
       criminalPath: [],
       lastPoliceSearches: [],
-      policeAiRadio: { turn: 1, lines: [] },
       winner: null,
       criminalMoving: false,
       policeAiThinking: false,
@@ -515,7 +471,6 @@ export default function App() {
         searched: {},
         criminalPath: [c0],
         lastPoliceSearches: [],
-        policeAiRadio: { turn: 1, lines: [] },
         winner: null,
         criminalMoving: false,
         policeAiThinking: false,
@@ -541,7 +496,6 @@ export default function App() {
         searched: {},
         criminalPath: [],
         lastPoliceSearches: [],
-        policeAiRadio: { turn: 1, lines: [] },
         winner: null,
         criminalMoving: false,
         policeAiThinking: false,
@@ -799,7 +753,6 @@ export default function App() {
       heliActed: [false, false, false],
       selectedHeli: null,
       lastPoliceSearches: [],
-      policeAiRadio: { turn: 1, lines: [] },
     }));
   }
 
@@ -906,20 +859,8 @@ export default function App() {
               const heliActed = prev.heliActed.slice();
               heliActed[heliIndex] = true;
 
-              // 無線（PASS_PLAYはpushRadioがno-op）
-              const tops = [bestCellByHeat(heat)];
-              const realFocus = quadrantOfCell(tops[0]);
-              const conf = heatConfidence(heat);
-              const { focus, isFake } = maybeFakeFocus(realFocus, conf, prev.turn);
-
-              const line = isFake
-                ? `無線: 「${focus}側を締める。反応を見る。」`
-                : `無線: 「${focus}を締める（確信${conf}%）。包囲を狭める。」`;
-
-              const prev2 = pushRadio(prev, line);
-
               return {
-                ...prev2,
+                ...prev,
                 helicopters,
                 heliActed,
                 selectedHeli: heliIndex,
@@ -937,25 +878,11 @@ export default function App() {
           const newMark: SearchMark = { turn: prev.turn, target, heliIndex };
           const lastPoliceSearches = [...prev.lastPoliceSearches, newMark].slice(-3);
 
-          // 無線（心理戦：フェイクあり、最終ターンOFF）
-          const realFocus = quadrantOfCell(target);
-          const conf = heatConfidence(heat);
-          const { focus, isFake } = maybeFakeFocus(realFocus, conf, prev.turn);
-
-          const reason =
-            conf < 55 ? "情報が足りない…まずは揺さぶる" : hasAnyTrace ? "痕跡の時系列が合う" : "配置からの直感";
-
-          const line = isFake
-            ? `無線: 「${focus}寄りを重点捜索だ（確信${conf}%）。一度揺さぶる。」`
-            : `無線: 「${focus}寄りが怪しい（確信${conf}%）。${reason}。」`;
-
-          const prev2 = pushRadio(prev, line);
-
-          const cp = prev2.criminalPos;
+          const cp = prev.criminalPos;
           if (cp && target.r === cp.r && target.c === cp.c) {
             aiRunningRef.current = false;
             return {
-              ...prev2,
+              ...prev,
               phase: "END",
               winner: "POLICE",
               selectedHeli: heliIndex,
@@ -966,20 +893,20 @@ export default function App() {
             };
           }
 
-          const revealed = { ...prev2.revealed };
-          const v = prev2.visits[keyCell(target)];
+          const revealed = { ...prev.revealed };
+          const v = prev.visits[keyCell(target)];
           if (v && v.length > 0 && !revealed[keyCell(target)]) revealed[keyCell(target)] = true;
 
-          const heliActed = prev2.heliActed.slice();
+          const heliActed = prev.heliActed.slice();
           heliActed[heliIndex] = true;
 
           return {
-            ...prev2,
+            ...prev,
             searched,
             revealed,
             heliActed,
             selectedHeli: heliIndex,
-            actionsLeft: prev2.actionsLeft - 1,
+            actionsLeft: prev.actionsLeft - 1,
             lastPoliceSearches,
           };
         });
@@ -1214,9 +1141,6 @@ export default function App() {
     return false;
   };
 
-  // ✅ 無線UI：ソロ犯人のみ
-  const showPoliceRadioUI = state.mode === "SINGLE" && state.role === "CRIMINAL" && state.phase !== "ROLE_SELECT";
-
   // ✅ 捜索マークを表示する条件：ソロ犯人の「犯人手番（CRIMINAL_MOVE）」中に、同ターンの3つ
   const showPoliceSearchMarks = state.mode === "SINGLE" && state.role === "CRIMINAL" && state.phase === "CRIMINAL_MOVE";
 
@@ -1369,49 +1293,6 @@ export default function App() {
       )}
 
       <main style={{ display: "grid", gap: 12, marginTop: 12 }}>
-        {/* ===== 無線UI（ソロ犯人だけ）===== */}
-        {showPoliceRadioUI && (
-          <section
-            style={{
-              border: "1px solid #e5e7eb",
-              borderRadius: 14,
-              padding: 12,
-              background: "#fff",
-              boxShadow: "0 2px 10px rgba(0,0,0,0.05)",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-              <div style={{ fontSize: 14, fontWeight: 950 }}>📻 警察無線</div>
-              <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 800 }}>Turn {state.policeAiRadio.turn}</div>
-            </div>
-            <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
-              {state.policeAiRadio.lines.length === 0 ? (
-                <div style={{ fontSize: 12, color: "#6b7280" }}>（まだ無線はありません）</div>
-              ) : (
-                state.policeAiRadio.lines
-                  .slice()
-                  .reverse()
-                  .map((ln, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        fontSize: 12,
-                        lineHeight: 1.35,
-                        padding: "8px 10px",
-                        borderRadius: 12,
-                        background: "rgba(17,24,39,0.04)",
-                        border: "1px solid rgba(17,24,39,0.06)",
-                        color: "#111827",
-                        fontWeight: 800,
-                      }}
-                    >
-                      {ln}
-                    </div>
-                  ))
-              )}
-            </div>
-          </section>
-        )}
 
         <section>
           <div
