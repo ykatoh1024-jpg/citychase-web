@@ -1125,7 +1125,7 @@ export default function App() {
   const winnerSub = state.winner === "POLICE" ? "犯人を見つけました" : state.winner === "CRIMINAL" ? "逃げ切りました" : "";
 
   // 盤面サイズ（aspectRatioを使わず iOS で安定させる）
-  const boardSize = "min(92vw, 480px)";
+  const boardSize = "min(92vw, 640px)";
 
   const shouldShowCarNow = (cell: Cell) => {
     if (!state.criminalPos) return false;
@@ -1169,7 +1169,17 @@ export default function App() {
   };
 
   return (
-    <div style={{ padding: 12, maxWidth: 560, margin: "0 auto", fontFamily: "system-ui, sans-serif", overflowX: "hidden", width: "100%" }}>
+    <div
+      style={{
+        padding: 12,
+        // ✅ iPad以上では横幅を広げて余白を減らす
+        maxWidth: "min(1100px, 96vw)",
+        margin: "0 auto",
+        fontFamily: "system-ui, sans-serif",
+        overflowX: "hidden",
+        width: "100%",
+      }}
+    >
       {/* ===== タイトル画面：Turn/Resetは出さない ===== */}
       {state.phase === "ROLE_SELECT" ? (
         <header style={titleWrapStyle}>
@@ -1292,7 +1302,16 @@ export default function App() {
         </header>
       )}
 
-      <main style={{ display: "grid", gap: 12, marginTop: 12 }}>
+      <main
+        style={{
+          display: "grid",
+          gap: 12,
+          marginTop: 12,
+          // ✅ iPad以上で2カラム、スマホは1カラム
+          gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
+          alignItems: "start",
+        }}
+      >
 
         <section>
           <div
