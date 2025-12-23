@@ -261,7 +261,29 @@ function bestMoveNodeTowardAvoidOccupied(node: Node, target: Cell, occupied: Set
   return best;
 }
 
+// ===== 心理戦用（粗い推理ログ） =====
+function quadrantOfCell(c: Cell): "北西" | "北東" | "南西" | "南東" {
+  const north = c.r <= 2;
+  const west = c.c <= 2;
+  if (north && west) return "北西";
+  if (north && !west) return "北東";
+  if (!north && west) return "南西";
+  return "南東";
+}
+function topCellsByHeat(heat: number[][], k: number): Cell[] {
+  const all: { c: Cell; v: number }[] = [];
+  for (let r = 0; r < GRID; r++) for (let c = 0; c < GRID; c++) all.push({ c: { r, c }, v: heat[r][c] });
+  all.sort((a, b) => b.v - a.v);
+  return all.slice(0, k).map((x) => x.c);
+}
+function heatConfidence(heat: number[][]): number {
+  let mx = 0;
+  for (let r = 0; r < GRID; r++) for (let c = 0; c < GRID; c++) mx = Math.max(mx, heat[r][c]);
+  return Math.max(35, Math.min(95, Math.round(35 + mx * 60)));
+}
+
 type SearchMark = { turn: number; target: Cell; heliIndex: number };
+type RadioState = { turn: number; lines: string[] };
 
 type GameState = {
   mode: Mode;
@@ -282,8 +304,11 @@ type GameState = {
   searched: Record<string, boolean>;
   criminalPath: Cell[];
 
-  // ★そのターン中の捜索マーク（最大3つ、犯人手番で見える）
+  // ★そのターン中の捜索（最大3つ、犯人手番で見える）
   lastPoliceSearches: SearchMark[];
+
+  // ★心理戦：警察AIの無線ログ（犯人に見える）
+  policeAiRadio: RadioState;
 
   policeAiThinking: boolean;
 
@@ -294,6 +319,12 @@ type GameState = {
 
   handoff: { show: boolean; to: Viewer; message: string };
 };
+
+function pushRadio(prev: GameState, line: string): GameState {
+  const current = prev.policeAiRadio.turn === prev.turn ? prev.policeAiRadio.lines : [];
+  const nextLines = [...current, line].slice(-5);
+  return { ...prev, policeAiRadio: { turn: prev.turn, lines: nextLines } };
+}
 
 export default function App() {
   const aiTimersRef = useRef<number[]>([]);
@@ -327,6 +358,7 @@ export default function App() {
     criminalPath: [],
 
     lastPoliceSearches: [],
+    policeAiRadio: { turn: 1, lines: [] },
 
     policeAiThinking: false,
 
@@ -391,6 +423,7 @@ export default function App() {
       searched: {},
       criminalPath: [],
       lastPoliceSearches: [],
+      policeAiRadio: { turn: 1, lines: [] },
       policeAiThinking: false,
       criminalMoving: false,
       moveWaitSec: 5,
@@ -434,6 +467,7 @@ export default function App() {
       searched: {},
       criminalPath: [],
       lastPoliceSearches: [],
+      policeAiRadio: { turn: 1, lines: [] },
       winner: null,
       criminalMoving: false,
       policeAiThinking: false,
@@ -467,12 +501,14 @@ export default function App() {
         searched: {},
         criminalPath: [c0],
         lastPoliceSearches: [],
+        policeAiRadio: { turn: 1, lines: [] },
         winner: null,
         criminalMoving: false,
         policeAiThinking: false,
         handoff: { show: false, to: "POLICE", message: "" },
       }));
     } else {
+      // ★ここが「ソロ：犯人（警察AI）」側（chooseRoleSingle("CRIMINAL")）
       const helis = uniqueRandomNodes(3);
       setState((s) => ({
         ...s,
@@ -491,6 +527,7 @@ export default function App() {
         searched: {},
         criminalPath: [],
         lastPoliceSearches: [],
+        policeAiRadio: { turn: 1, lines: [] },
         winner: null,
         criminalMoving: false,
         policeAiThinking: false,
@@ -818,6 +855,7 @@ export default function App() {
 
           const heat = buildHeat(prev.turn, prev.visits, prev.revealed);
 
+          // まだ動いてないヘリを順番に使う（必ず3機行動する）
           const candidates = [0, 1, 2].filter((idx) => !prev.heliActed[idx]);
           if (candidates.length === 0) return prev;
           const heliIndex = candidates[0] as 0 | 1 | 2;
@@ -827,6 +865,7 @@ export default function App() {
           const hasAnyTrace = Object.values(prev.revealed).some(Boolean);
           const isLastTurn = prev.turn >= MAX_TURN;
 
+          // 最終ターンは「移動しない」＝捜索のみ
           const doMove = isLastTurn ? false : Math.random() < (hasAnyTrace ? 0.55 : 0.3);
 
           if (doMove) {
@@ -835,8 +874,8 @@ export default function App() {
             const occupied = new Set(prev.helicopters.map(keyNode));
             occupied.delete(keyNode(heliNode));
 
+            // 待機禁止：移動候補があるなら必ずどこかへ動く
             const moveCandidates = neighborsNode(heliNode).filter((n) => !occupied.has(keyNode(n)));
-
             if (moveCandidates.length > 0) {
               const to = bestMoveNodeTowardAvoidOccupied(heliNode, target, occupied);
               const finalTo = keyNode(to) !== keyNode(heliNode) ? to : moveCandidates[0];
@@ -847,26 +886,41 @@ export default function App() {
               const heliActed = prev.heliActed.slice();
               heliActed[heliIndex] = true;
 
+              const tops = topCellsByHeat(heat, 3);
+              const focus = quadrantOfCell(tops[0]);
+              const conf = heatConfidence(heat);
+              const line = `無線: 「${focus}を締める（確信${conf}%）。ヘリ同士が被らないよう圧をかける。」`;
+              const prev2 = pushRadio(prev, line);
+
               return {
-                ...prev,
+                ...prev2,
                 helicopters,
                 heliActed,
                 selectedHeli: heliIndex,
-                actionsLeft: prev.actionsLeft - 1,
+                actionsLeft: prev2.actionsLeft - 1,
               };
             }
           }
 
+          // 移動できない/しない場合は捜索（＝必ず行動は消費される）
           const target = bestSearchTarget(heliNode, heat, prev.searched);
           const searched = { ...prev.searched, [keyCell(target)]: true };
 
-          const newMark: SearchMark = { turn: prev.turn, target, heliIndex };
-          const lastPoliceSearches = [...prev.lastPoliceSearches, newMark].slice(-3);
+          const tops = topCellsByHeat(heat, 3);
+          const focus = quadrantOfCell(tops[0]);
+          const conf = heatConfidence(heat);
+          const reasonA = hasAnyTrace ? "痕跡の時系列が合う" : "まだ情報が薄い…まずは当て勘";
+          const line = `無線: 「${focus}寄りが怪しい（確信${conf}%）。${reasonA}、周囲を洗う。」`;
+          const prev2 = pushRadio(prev, line);
 
-          if (target.r === prev.criminalPos.r && target.c === prev.criminalPos.c) {
+          const newMark: SearchMark = { turn: prev2.turn, target, heliIndex };
+          const lastPoliceSearches = [...prev2.lastPoliceSearches, newMark].slice(-3);
+
+          const cp = prev2.criminalPos;
+          if (cp && target.r === cp.r && target.c === cp.c) {
             aiRunningRef.current = false;
             return {
-              ...prev,
+              ...prev2,
               phase: "END",
               winner: "POLICE",
               selectedHeli: heliIndex,
@@ -877,20 +931,20 @@ export default function App() {
             };
           }
 
-          const revealed = { ...prev.revealed };
-          const v = prev.visits[keyCell(target)];
+          const revealed = { ...prev2.revealed };
+          const v = prev2.visits[keyCell(target)];
           if (v && v.length > 0 && !revealed[keyCell(target)]) revealed[keyCell(target)] = true;
 
-          const heliActed = prev.heliActed.slice();
+          const heliActed = prev2.heliActed.slice();
           heliActed[heliIndex] = true;
 
           return {
-            ...prev,
+            ...prev2,
             searched,
             revealed,
             heliActed,
             selectedHeli: heliIndex,
-            actionsLeft: prev.actionsLeft - 1,
+            actionsLeft: prev2.actionsLeft - 1,
             lastPoliceSearches,
           };
         });
@@ -1225,15 +1279,7 @@ export default function App() {
                   シティチェイス
                 </div>
 
-                <div
-                  style={{
-                    marginTop: 10,
-                    color: "rgba(255,255,255,0.78)",
-                    fontSize: 13,
-                    fontWeight: 800,
-                    lineHeight: 1.5,
-                  }}
-                >
+                <div style={{ marginTop: 10, color: "rgba(255,255,255,0.78)", fontSize: 13, fontWeight: 800, lineHeight: 1.5 }}>
                   追い詰めるか、逃げ切るか。
                   <br />
                   3機のヘリで心理戦。
@@ -1245,7 +1291,7 @@ export default function App() {
               style={{
                 marginTop: 12,
                 borderRadius: 16,
-                padding: "12px 12px",
+                padding: 12,
                 background: "linear-gradient(180deg, rgba(17,24,39,0.04), rgba(17,24,39,0.02))",
                 border: "1px solid rgba(17,24,39,0.08)",
                 boxShadow: "0 10px 24px rgba(0,0,0,0.06)",
@@ -1324,6 +1370,33 @@ export default function App() {
               {state.phase === "POLICE_AI_TURN" && (state.policeAiThinking ? "警察AIが行動中（痕跡の時系列で推理中）…" : "警察AIのターン")}
               {state.phase === "CRIMINAL_MOVE" && "犯人：移動候補（隣接かつ未訪問）だけ明るく表示（再訪不可）。"}
               {state.phase === "END" && (state.winner === "CRIMINAL" ? "犯人の勝ち" : "警察の勝ち") + "：白線が犯人ルートです（S=開始 / E=終了）。"}
+
+              {/* ★犯人モードだけ：警察無線を表示 */}
+              {state.mode === "SINGLE" && state.role === "CRIMINAL" && (state.phase === "CRIMINAL_MOVE" || state.phase === "CRIMINAL_HIDE") && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    padding: "10px 10px",
+                    borderRadius: 12,
+                    background: "#0b1220",
+                    color: "rgba(255,255,255,0.92)",
+                    border: "1px solid rgba(255,255,255,0.10)",
+                  }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.85 }}>📻 警察無線（AIの推理の雰囲気）</div>
+                  <div style={{ marginTop: 6, display: "grid", gap: 4, fontSize: 12, lineHeight: 1.35 }}>
+                    {state.policeAiRadio.lines.length === 0 ? (
+                      <div style={{ opacity: 0.75 }}>…まだ無線は静かだ。</div>
+                    ) : (
+                      state.policeAiRadio.lines.map((ln, i) => (
+                        <div key={i} style={{ opacity: 0.95 }}>
+                          {ln}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </>
         )}
@@ -1440,6 +1513,7 @@ export default function App() {
                   <div key={k} style={style} onClick={() => (tappable ? onCellTap(c) : undefined)}>
                     {showCar ? <span style={{ fontSize: 22 }}>🚗</span> : null}
 
+                    {/* ★捜索マーク：最大3つ残る（犯人手番で見える） */}
                     {isSearchedThisTurn ? (
                       <span
                         style={{
@@ -1677,7 +1751,7 @@ export default function App() {
               <div style={{ display: "flex", gap: 8 }}>
                 <button
                   disabled={!currentHeliCanAct()}
-                  onClick={setPoliceModeSearch}
+                  onClick={() => setPoliceModeSearch()}
                   style={{
                     ...baseButtonStyle,
                     flex: 1,
@@ -1691,7 +1765,7 @@ export default function App() {
                 </button>
 
                 <button
-                  onClick={setPoliceModeMove}
+                  onClick={() => setPoliceModeMove()}
                   style={{
                     ...baseButtonStyle,
                     flex: 1,
