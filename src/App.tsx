@@ -1163,50 +1163,62 @@ export default function App() {
           boxShadow: "0 2px 10px rgba(0,0,0,0.06)",
         }}
       >
-        {state.phase === "END" && state.winner && (
-          <div
-            style={{
-              marginBottom: 10,
-              borderRadius: 14,
-              padding: "12px 14px",
-              background: state.winner === "POLICE" ? "#dcfce7" : "#fee2e2",
-              border: "1px solid rgba(0,0,0,0.08)",
-            }}
-          >
-            <div style={{ fontSize: 24, fontWeight: 900 }}>{winnerText}</div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>{winnerSub}</div>
-          </div>
-        )}
-
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap", minWidth: 0 }}>
-          <div style={{ fontSize: 26, fontWeight: 900 }}>
-            Turn <span style={{ fontSize: 34 }}>{state.turn}</span>
-            <span style={{ fontSize: 16, fontWeight: 700, color: "#666" }}> / {MAX_TURN}</span>
-          </div>
-
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 22, fontWeight: 900 }}>{phaseLabel}</div>
-            <div style={{ fontSize: 18, fontWeight: 900, color: "#111" }}>
-              行動残り：{state.phase === "POLICE_TURN" || state.phase === "POLICE_AI_TURN" ? state.actionsLeft : "-"}
+        {/* ★最初の画面（ROLE_SELECT）は“タイトルだけ” */}
+        {state.phase === "ROLE_SELECT" ? (
+          <div style={{ padding: "10px 6px" }}>
+            <div style={{ fontSize: 30, fontWeight: 1000, letterSpacing: 0.5, color: "#111827" }}>シティチェイス</div>
+            <div style={{ marginTop: 6, fontSize: 13, fontWeight: 700, color: "#6b7280", lineHeight: 1.4 }}>
+              ボードゲーム「シティチェイス」をスマホで遊べるWebアプリ
             </div>
           </div>
-        </div>
+        ) : (
+          <>
+            {state.phase === "END" && state.winner && (
+              <div
+                style={{
+                  marginBottom: 10,
+                  borderRadius: 14,
+                  padding: "12px 14px",
+                  background: state.winner === "POLICE" ? "#dcfce7" : "#fee2e2",
+                  border: "1px solid rgba(0,0,0,0.08)",
+                }}
+              >
+                <div style={{ fontSize: 24, fontWeight: 900 }}>{winnerText}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>{winnerSub}</div>
+              </div>
+            )}
 
-        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          <button
-            onClick={reset}
-            style={{
-              ...baseButtonStyle,
-              height: 38,
-              lineHeight: "38px",
-              flex: 1,
-              fontSize: 14,
-              fontWeight: 800,
-            }}
-          >
-            リセット
-          </button>
-        </div>
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap", minWidth: 0 }}>
+              <div style={{ fontSize: 26, fontWeight: 900 }}>
+                Turn <span style={{ fontSize: 34 }}>{state.turn}</span>
+                <span style={{ fontSize: 16, fontWeight: 700, color: "#666" }}> / {MAX_TURN}</span>
+              </div>
+
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 22, fontWeight: 900 }}>{phaseLabel}</div>
+                <div style={{ fontSize: 18, fontWeight: 900, color: "#111" }}>
+                  行動残り：{state.phase === "POLICE_TURN" || state.phase === "POLICE_AI_TURN" ? state.actionsLeft : "-"}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <button
+                onClick={reset}
+                style={{
+                  ...baseButtonStyle,
+                  height: 38,
+                  lineHeight: "38px",
+                  flex: 1,
+                  fontSize: 14,
+                  fontWeight: 800,
+                }}
+              >
+                リセット
+              </button>
+            </div>
+          </>
+        )}
 
         <div
           style={{
@@ -1221,8 +1233,7 @@ export default function App() {
         >
           {state.phase === "ROLE_SELECT" && "モードを選択してください（ソロ or 友達対戦）。"}
           {state.phase === "POLICE_SETUP" && (state.mode === "PASS_PLAY" ? "友達対戦：警察がヘリを3機配置（交差点タップ）。" : "警察：ヘリを3機配置してください（交差点タップ）。")}
-          {state.phase === "POLICE_TURN" &&
-            (policeSearchMode ? "警察：捜索モード（周囲4ビルのどれか1つをタップ）" : "警察：移動モード（隣接交差点へ移動）")}
+          {state.phase === "POLICE_TURN" && (policeSearchMode ? "警察：捜索モード（周囲4ビルのどれか1つをタップ）" : "警察：移動モード（隣接交差点へ移動）")}
           {state.phase === "CRIMINAL_AI_MOVING" && "犯人AIが移動中…"}
           {state.phase === "CRIMINAL_HIDE" && "犯人：最初に隠れるビルをタップして決めてください。"}
           {state.phase === "POLICE_AI_TURN" && (state.policeAiThinking ? "警察AIが行動中（痕跡の時系列で推理中）…" : "警察AIのターン")}
