@@ -419,6 +419,128 @@ export default function App() {
     });
   }
 
+  function rematch() {
+    clearAiTimers();
+    setPoliceSearchMode(false);
+
+    setState((s) => {
+      // PASS_PLAY（友達対戦）：そのまま対戦を最初から（警察セットアップへ）
+      if (s.mode === "PASS_PLAY") {
+        return {
+          ...s,
+          mode: "PASS_PLAY",
+          role: null,
+          viewer: "POLICE",
+          phase: "POLICE_SETUP",
+          turn: 1,
+          helicopters: [],
+          selectedHeli: null,
+          actionsLeft: ACTIONS_PER_TURN,
+          heliActed: [false, false, false],
+          criminalPos: null,
+          visits: {},
+          revealed: {},
+          searched: {},
+          criminalPath: [],
+          lastPoliceSearches: [],
+          policeAiThinking: false,
+          criminalMoving: false,
+          moveWaitSec: 5,
+          winner: null,
+          handoff: { show: false, to: "POLICE", message: "" },
+        };
+      }
+
+      // SINGLE：直前の role があるならそれで再戦
+      if (s.mode === "SINGLE" && s.role) {
+        const role = s.role;
+
+        // 警察（犯人AI）で再戦：犯人AIの初期位置も再抽選してセットアップへ
+        if (role === "POLICE") {
+          const c0 = randomCell();
+          const visits: Record<string, number[]> = {};
+          visits[keyCell(c0)] = [1];
+
+          return {
+            ...s,
+            mode: "SINGLE",
+            role,
+            viewer: "POLICE",
+            phase: "POLICE_SETUP",
+            turn: 1,
+            helicopters: [],
+            selectedHeli: null,
+            actionsLeft: ACTIONS_PER_TURN,
+            heliActed: [false, false, false],
+            criminalPos: c0,
+            visits,
+            revealed: {},
+            searched: {},
+            criminalPath: [c0],
+            lastPoliceSearches: [],
+            policeAiThinking: false,
+            criminalMoving: false,
+            moveWaitSec: 5,
+            winner: null,
+            handoff: { show: false, to: "POLICE", message: "" },
+          };
+        }
+
+        // 犯人（警察AI）で再戦：ヘリも再配置し、犯人が初期位置を選ぶフェーズへ
+        const helis = uniqueRandomNodes(3);
+        return {
+          ...s,
+          mode: "SINGLE",
+          role,
+          viewer: "CRIMINAL",
+          phase: "CRIMINAL_HIDE",
+          turn: 1,
+          helicopters: helis,
+          selectedHeli: null,
+          actionsLeft: ACTIONS_PER_TURN,
+          heliActed: [false, false, false],
+          criminalPos: null,
+          visits: {},
+          revealed: {},
+          searched: {},
+          criminalPath: [],
+          lastPoliceSearches: [],
+          policeAiThinking: false,
+          criminalMoving: false,
+          moveWaitSec: 5,
+          winner: null,
+          handoff: { show: false, to: "CRIMINAL", message: "" },
+        };
+      }
+
+      // それ以外はタイトルへ
+      return {
+        ...s,
+        mode: "SINGLE",
+        role: null,
+        viewer: "POLICE",
+        phase: "ROLE_SELECT",
+        turn: 1,
+        helicopters: [],
+        selectedHeli: null,
+        actionsLeft: ACTIONS_PER_TURN,
+        heliActed: [false, false, false],
+        criminalPos: null,
+        visits: {},
+        revealed: {},
+        searched: {},
+        criminalPath: [],
+        lastPoliceSearches: [],
+        policeAiThinking: false,
+        criminalMoving: false,
+        moveWaitSec: 5,
+        winner: null,
+        handoff: { show: false, to: "POLICE", message: "" },
+      };
+    });
+  }
+
+
   function showHandoff(to: Viewer, message: string, nextPhase?: Phase) {
     setState((s) => ({
       ...s,
@@ -1285,6 +1407,23 @@ export default function App() {
 
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             <button
+              onClick={rematch}
+              style={{
+                ...baseButtonStyle,
+                height: 38,
+                lineHeight: "38px",
+                flex: 1,
+                fontSize: 14,
+                fontWeight: 900,
+                background: "#111827",
+                color: "#fff",
+                border: "1px solid rgba(17,24,39,0.18)",
+              }}
+            >
+              再戦する
+            </button>
+
+            <button
               onClick={reset}
               style={{
                 ...baseButtonStyle,
@@ -1295,9 +1434,10 @@ export default function App() {
                 fontWeight: 800,
               }}
             >
-              リセット
+              タイトルへ戻る
             </button>
           </div>
+
 
           <div
             style={{
