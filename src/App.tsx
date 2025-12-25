@@ -216,6 +216,37 @@ function buildHeat(currentTurn: number, visits: Record<string, number[]>, reveal
   return heat;
 }
 
+function traceAdjBonus(
+  c: Cell,
+  visits: Record<string, number[]>,
+  revealed: Record<string, boolean>
+): number {
+  let best = 0;
+
+  for (const k of Object.keys(revealed)) {
+    if (!revealed[k]) continue;
+
+    const turns = visits[k];
+    if (!turns || turns.length === 0) continue;
+
+    const t = Math.min(...turns); // その痕跡が示すターン（あなたの実装では最小）
+    const [r, cc] = k.split(",").map((x) => parseInt(x, 10));
+    const tr: Cell = { r, c: cc };
+
+    // 痕跡の隣接（上下左右）だけを加点
+    if (manhattanCell(c, tr) !== 1) continue;
+
+    // ★重み：6ターン目（オレンジ）を最優先、1ターン目（黄色）も強め、その他は弱め
+    const w = t === 6 ? 1.0 : t === 1 ? 0.65 : 0.25;
+
+    best = Math.max(best, w);
+  }
+
+  return best; // 0〜1.0
+}
+
+
+
 function bestCellByHeat(heat: number[][]): Cell {
   let best: Cell = { r: 0, c: 0 };
   let bestV = -1;
@@ -231,18 +262,37 @@ function bestCellByHeat(heat: number[][]): Cell {
   return best;
 }
 
-function bestSearchTarget(node: Node, heat: number[][], searched: Record<string, boolean>): Cell {
+function bestSearchTarget(
+  node: Node,
+  heat: number[][],
+  searched: Record<string, boolean>,
+  revealed: Record<string, boolean>,
+  visits: Record<string, number[]>
+): Cell {
   const cand = surroundingCells(node);
-  const scored = cand.map((c) => {
+
+  // 痕跡セル（過去に居た確定）は「犯人が今いない」ので捜索候補から外す
+  const filtered = cand.filter((c) => !revealed[keyCell(c)]);
+  const useCand = filtered.length > 0 ? filtered : cand; // 念のため
+
+  const scored = useCand.map((c) => {
     const k = keyCell(c);
-    const hs = heat[c.r][c.c];
-    const ns = searched[k] ? 0 : 1;
-    const score = hs * 2.0 + ns * 0.6 + Math.random() * 0.01;
+
+    const hs = heat[c.r][c.c];                 // 既存の確率分布
+    const ns = searched[k] ? 0 : 1;            // 未捜索を優先
+
+    // 係数は好みで調整可：まずはこのくらいが追跡っぽい
+    const adj = traceAdjBonus(c, visits, revealed);
+    const score = hs * 1.4 + ns * 0.9 + adj * 2.8 + Math.random() * 0.01;
+
+
     return { c, score };
   });
+
   scored.sort((a, b) => b.score - a.score);
   return scored[0].c;
 }
+
 
 /**
  * ヘリが重ならないように移動先を選ぶ（occupied を避ける）
@@ -1012,7 +1062,7 @@ export default function App() {
           }
 
           // ---- 捜索 ----
-          const target = bestSearchTarget(heliNode, heat, prev.searched);
+          const target = bestSearchTarget(heliNode, heat, prev.searched, prev.revealed, prev.visits);
           const searched = { ...prev.searched, [keyCell(target)]: true };
 
           // ✅ 捜索マーク（直近3つ）を保存（犯人側に見せる）
