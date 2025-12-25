@@ -1047,16 +1047,20 @@ export default function App() {
 
     const baseBlue = "#1d4ed8";
     const base: React.CSSProperties = {
-      border: "4px solid rgba(255,255,255,0.50)",
+      border: "1px solid rgba(15,23,42,0.25)",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
       userSelect: "none",
-      background: baseBlue,
+      background: "linear-gradient(180deg, #2563eb, #1d4ed8)",
       cursor: "default",
       position: "relative",
       boxSizing: "border-box",
+      borderRadius: 10,
+      boxShadow: "0 6px 10px rgba(0,0,0,0.18)",
     };
+
+    
 
     if (isRevealed && first != null) {
       base.background = traceColor(first);
@@ -1187,7 +1191,7 @@ export default function App() {
             <div style={{ minWidth: 220 }}>
               <div style={{ fontSize: 34, fontWeight: 1000, letterSpacing: 0.6 }}>シティチェイス</div>
               <div style={{ marginTop: 6, fontSize: 13, color: "rgba(255,255,255,0.78)", lineHeight: 1.4 }}>
-                盤面を見て、動きを読む。無線は本気か、ブラフか。
+                街中を逃げ回る犯人を追跡！鬼ごっこ×かくれんぼ！！
               </div>
             </div>
             <div style={{ fontSize: 34, opacity: 0.9 }}>🚁🔎🚗</div>
@@ -1323,7 +1327,7 @@ export default function App() {
               flex: "0 0 auto",
             }}
           >
-            <div style={{ position: "absolute", inset: 0, borderRadius: 16, background: "#cbd5e1" }} />
+            <div style={{ position: "absolute", inset: 0, borderRadius: 16, background: "#94a3b8" }} />
 
             <div
               style={{
