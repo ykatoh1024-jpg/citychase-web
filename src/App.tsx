@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 type Role = "POLICE" | "CRIMINAL";
 type Mode = "SINGLE" | "PASS_PLAY";
@@ -24,6 +24,7 @@ const GRID = 5;
 const NODE = 4;
 const MAX_TURN = 11;
 const ACTIONS_PER_TURN = 3;
+const ROAD_GAP = 22;
 
 function keyCell(c: Cell) {
   return `${c.r},${c.c}`;
@@ -299,6 +300,22 @@ type GameState = {
 export default function App() {
   const aiTimersRef = useRef<number[]>([]);
   const aiRunningRef = useRef(false);
+
+  const boardRef = useRef<HTMLDivElement | null>(null);
+  const [boardPx, setBoardPx] = useState(0);
+
+  useLayoutEffect(() => {
+    const el = boardRef.current;
+    if (!el) return;
+
+    const update = () => setBoardPx(el.clientWidth || 0);
+    update();
+
+    const ro = new ResizeObserver(() => update());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
 
   function clearAiTimers() {
     aiRunningRef.current = false;
@@ -1317,15 +1334,8 @@ export default function App() {
       >
 
         <section>
-          <div
-            style={{
-              position: "relative",
-              width: boardSize,
-              height: boardSize,
-              margin: "0 auto",
-              flex: "0 0 auto",
-            }}
-          >
+          <div ref={boardRef} style={{ position: "relative", width: boardSize, height: boardSize, margin: "0 auto", flex: "0 0 auto" }}>
+
             <div style={{ position: "absolute", inset: 0, borderRadius: 16, background: "#94a3b8" }} />
 
             <div
@@ -1335,7 +1345,7 @@ export default function App() {
                 display: "grid",
                 gridTemplateColumns: `repeat(${GRID}, 1fr)`,
                 gridTemplateRows: `repeat(${GRID}, 1fr)`,
-                gap: 22,
+                gap: ROAD_GAP,
                 border: "2px solid #0f172a",
                 borderRadius: 16,
                 overflow: "hidden",
@@ -1444,8 +1454,22 @@ export default function App() {
               const isSelected = state.selectedHeli != null && placedIndex === state.selectedHeli;
               const acted = placedIndex >= 0 ? state.heliActed[placedIndex] : false;
 
+              // fallback（boardPxがまだ0の時用）
               const leftPct = ((n.c + 1) / GRID) * 100;
               const topPct = ((n.r + 1) / GRID) * 100;
+
+              // gap込みのpx計算：交差点（道路の中央）
+              const totalGap = (GRID - 1) * ROAD_GAP;
+              const cellPx = boardPx > 0 ? (boardPx - totalGap) / GRID : 0;
+
+              const leftPx = boardPx > 0
+                ? (n.c + 1) * cellPx + n.c * ROAD_GAP + ROAD_GAP / 2
+                : 0;
+
+              const topPx = boardPx > 0
+                ? (n.r + 1) * cellPx + n.r * ROAD_GAP + ROAD_GAP / 2
+                : 0;
+
 
               let isMoveCandidate = false;
               if (
@@ -1469,8 +1493,8 @@ export default function App() {
                   disabled={!clickable || state.criminalMoving}
                   style={{
                     position: "absolute",
-                    left: `${leftPct}%`,
-                    top: `${topPct}%`,
+                    left: boardPx > 0 ? `${leftPx}px` : `${leftPct}%`,
+                    top:  boardPx > 0 ? `${topPx}px`  : `${topPct}%`,
                     transform: "translate(-50%, -50%)",
                     width: 44,
                     height: 44,
