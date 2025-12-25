@@ -1261,6 +1261,19 @@ export default function App() {
       : state.phase === "CRIMINAL_MOVE"
       ? "CRIMINAL"
       : "END";
+  
+  const isPlayerLose = (() => {
+    if (!state.winner) return false;
+
+    // ソロモードのみ判定
+    if (state.mode === "SINGLE" && state.role) {
+      return state.winner !== state.role;
+    }
+
+    // 友達対戦では「負け演出」は使わない
+    return false;
+  })();
+
 
   const winnerText = (() => {
     if (!state.winner) return "";
@@ -1415,10 +1428,16 @@ export default function App() {
                 marginBottom: 10,
                 borderRadius: 14,
                 padding: "12px 14px",
-                background: state.winner === "POLICE" ? "#dcfce7" : "#fee2e2",
+
+                // ★ここがポイント
+                background: isPlayerLose
+                  ? "#fee2e2" // 敗北：薄い赤
+                  : "#dcfce7", // 勝利：薄い緑
+
                 border: "1px solid rgba(0,0,0,0.08)",
               }}
             >
+
               <div style={{ fontSize: 24, fontWeight: 900 }}>{winnerText}</div>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>{winnerSub}</div>
             </div>
