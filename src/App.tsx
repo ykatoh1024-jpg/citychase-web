@@ -1335,7 +1335,7 @@ export default function App() {
                 display: "grid",
                 gridTemplateColumns: `repeat(${GRID}, 1fr)`,
                 gridTemplateRows: `repeat(${GRID}, 1fr)`,
-                gap: 0,
+                gap: 14,
                 border: "2px solid #0f172a",
                 borderRadius: 16,
                 overflow: "hidden",
