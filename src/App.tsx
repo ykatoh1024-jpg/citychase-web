@@ -1262,9 +1262,42 @@ export default function App() {
       ? "CRIMINAL"
       : "END";
 
-  const winnerText =
-    state.winner === "POLICE" ? "🚓 警察の勝ち！" : state.winner === "CRIMINAL" ? "🚗 犯人の勝ち！" : "";
-  const winnerSub = state.winner === "POLICE" ? "犯人を見つけました" : state.winner === "CRIMINAL" ? "逃げ切りました" : "";
+  const winnerText = (() => {
+    if (!state.winner) return "";
+
+    // ===== ソロモード =====
+    if (state.mode === "SINGLE" && state.role) {
+      // プレイヤーが警察
+      if (state.role === "POLICE") {
+        return state.winner === "POLICE" ? "🚓 警察の勝ち！" : "🚗 警察の負け…";
+      }
+      // プレイヤーが犯人
+      if (state.role === "CRIMINAL") {
+        return state.winner === "CRIMINAL" ? "🚗 犯人の勝ち！" : "🚓 犯人の負け…";
+      }
+    }
+
+    // ===== 友達対戦（従来表示） =====
+    return state.winner === "POLICE" ? "🚓 警察の勝ち！" : "🚗 犯人の勝ち！";
+  })();
+
+  const winnerSub = (() => {
+    if (!state.winner) return "";
+
+    // ===== ソロモード =====
+    if (state.mode === "SINGLE" && state.role) {
+      if (state.role === "POLICE") {
+        return state.winner === "POLICE" ? "犯人を見つけました" : "犯人に逃げ切られました";
+      }
+      if (state.role === "CRIMINAL") {
+        return state.winner === "CRIMINAL" ? "逃げ切りました" : "警察に見つかりました";
+      }
+    }
+
+    // ===== 友達対戦 =====
+    return state.winner === "POLICE" ? "犯人を見つけました" : "逃げ切りました";
+  })();
+
 
   // 盤面サイズ（aspectRatioを使わず iOS で安定させる）
   const boardSize = "min(92vw, 640px)";
