@@ -392,6 +392,8 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const isTablet = window.innerWidth >= 768 && window.innerWidth <= 1024;
+
   function reset() {
     clearAiTimers();
     setPoliceSearchMode(false);
@@ -1312,8 +1314,11 @@ export default function App() {
   })();
 
 
-  // 盤面サイズ（aspectRatioを使わず iOS で安定させる）
-  const boardSize = "min(92vw, 640px)";
+  const boardSize =
+    window.innerWidth >= 768 && window.innerWidth <= 1024
+      ? "min(96vw, 820px)"   // iPad用
+      : "min(92vw, 640px)";  // スマホ・PC用
+
 
   const shouldShowCarNow = (cell: Cell) => {
     if (!state.criminalPos) return false;
@@ -1359,9 +1364,8 @@ export default function App() {
   return (
     <div
       style={{
-        padding: 12,
-        // ✅ iPad以上では横幅を広げて余白を減らす
-        maxWidth: "min(1100px, 96vw)",
+        padding: 8,
+        maxWidth: "100vw",
         margin: "0 auto",
         fontFamily: "system-ui, sans-serif",
         overflowX: "hidden",
@@ -1417,7 +1421,7 @@ export default function App() {
           style={{
             border: "1px solid #e5e7eb",
             borderRadius: 14,
-            padding: 12,
+            padding: 10,
             background: "#fff",
             boxShadow: "0 2px 10px rgba(0,0,0,0.06)",
           }}
@@ -1425,7 +1429,7 @@ export default function App() {
           {state.phase === "END" && state.winner && (
             <div
               style={{
-                marginBottom: 10,
+                marginBottom: 6,
                 borderRadius: 14,
                 padding: "12px 14px",
 
@@ -1519,11 +1523,11 @@ export default function App() {
           display: "grid",
           gap: 12,
           marginTop: 12,
-          // ✅ iPad以上で2カラム、スマホは1カラム
-          gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
+          gridTemplateColumns: isTablet ? "1fr" : "repeat(auto-fit, minmax(360px, 1fr))",
           alignItems: "start",
         }}
       >
+
 
         <section>
           <div ref={boardRef} style={{ position: "relative", width: boardSize, height: boardSize, margin: "0 auto", flex: "0 0 auto" }}>
