@@ -1045,7 +1045,6 @@ export default function App() {
     const turns = state.visits[k] ?? [];
     const first = turns.length ? Math.min(...turns) : null;
 
-    const baseBlue = "#1d4ed8";
     const base: React.CSSProperties = {
       border: "1px solid rgba(15,23,42,0.25)",
       display: "flex",
